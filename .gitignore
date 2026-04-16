@@ -1,0 +1,46 @@
+# Credenciales — NUNCA subir al repo
+.env
+
+# Modelos entrenados (binarios grandes, se regeneran con train.py)
+models/*.joblib
+models/*.h5
+models/*.json
+
+# Datos históricos descargados
+data/historical/
+data/features/
+
+# Logs y estado en runtime
+logs/
+state.json
+bot.pid
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Build / packaging
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# IDEs
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Claude Code (configuración local, no compartir)
+.claude/settings.local.json

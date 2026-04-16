@@ -1,0 +1,56 @@
+alpaca:
+  data_feed: iex
+  paper_trading: true
+bar_buffer_size: 500
+dashboard:
+  max_log_lines: 50
+  refresh_rate: 1.0
+  signal_history_count: 20
+indicators:
+  atr_period: 14
+  bb_period: 20
+  bb_std: 2.0
+  ema_fast: 9
+  ema_slow: 21
+  macd_fast: 12
+  macd_signal: 9
+  macd_slow: 26
+  rsi_period: 14
+  sma_200: 200
+  stoch_d: 3
+  stoch_k: 14
+ml:
+  confidence_threshold: 0.65
+  feature_lookback: 20
+  min_bars_required: 50
+  model_path: models/
+  model_type: random_forest
+risk:
+  max_consecutive_losses: 5
+  max_daily_loss_pct: 0.05
+  max_orders_per_minute: 3
+  max_position_pct: 0.05
+  max_total_exposure: 0.8
+  min_daily_volume: 500000
+  min_stock_price: 5.0
+  stop_loss_atr_multiplier: 2.0
+  take_profit_atr_multiplier: 4.0
+symbols:
+- AAPL
+- TSLA
+- NVDA
+- MSFT
+- GOOGL
+- AMZN
+- SPY
+- QQQ
+timeframe: 1Min
+training:
+  buy_threshold: 0.005
+  forward_return_periods: 5
+  lookback_days: 365
+  max_depth: 10
+  n_estimators: 200
+  random_state: 42
+  sell_threshold: -0.005
+  test_split: 0.2

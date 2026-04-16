@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "inverdan-dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["web/app.py", "--port", "5050", "--host", "127.0.0.1"],
+      "port": 5050
+    }
+  ]
+}

@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>INVERDAN — Dashboard</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ════════════════════════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M4 22L10 14l4 4 5-7 5 9" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="brand-text">INVERDAN</span>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="overview">
+      <svg viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      <span>Resumen</span>
+    </a>
+    <a href="#" class="nav-item" data-section="positions">
+      <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span>Posiciones</span>
+    </a>
+    <a href="#" class="nav-item" data-section="signals">
+      <svg viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      <span>Señales</span>
+    </a>
+    <a href="#" class="nav-item" data-section="trades">
+      <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      <span>Operaciones</span>
+    </a>
+    <a href="#" class="nav-item" data-section="server">
+      <svg viewBox="0 0 24 24"><path d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
+      <span>Servidor</span>
+    </a>
+    <a href="#" class="nav-item" data-section="config">
+      <svg viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>Configuración</span>
+    </a>
+    <a href="#" class="nav-item" data-section="logs">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h8m-8 4h4"/></svg>
+      <span>Logs</span>
+    </a>
+
+    <div class="nav-divider"></div>
+
+    <a href="#" class="nav-item" data-section="manual">
+      <svg viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      <span>Manual</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="market-badge" id="marketBadge">
+      <span class="market-dot"></span>
+      <span id="marketStatus">Cargando...</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ════════════════════════════════════════════════════════════════ -->
+<main class="main-content">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <button class="sidebar-toggle" id="sidebarToggle">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <h1 class="page-title" id="pageTitle">Resumen</h1>
+    <div class="topbar-right">
+      <div class="clock" id="clock"></div>
+      <div class="refresh-indicator" id="refreshDot" title="Actualizando..."></div>
+      <button class="btn btn-danger btn-sm" id="emergencyBtn" onclick="emergencyStop()">
+        ⛔ EMERGENCIA
+      </button>
+    </div>
+  </header>
+
+  <!-- ── OVERVIEW ─────────────────────────────────────────────────────────── -->
+  <section class="section active" id="section-overview">
+
+    <!-- KPI cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Equity</div>
+        <div class="kpi-value" id="kpiEquity">—</div>
+        <div class="kpi-sub" id="kpiEquitySub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">PnL del Día</div>
+        <div class="kpi-value" id="kpiDailyPnl">—</div>
+        <div class="kpi-sub" id="kpiDailyPnlSub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">PnL No Realizado</div>
+        <div class="kpi-value" id="kpiUnrealizedPnl">—</div>
+        <div class="kpi-sub" id="kpiUnrealizedSub"></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Compra Disponible</div>
+        <div class="kpi-value" id="kpiBuyingPower">—</div>
+        <div class="kpi-sub">Capacidad de inversión</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Operaciones Hoy</div>
+        <div class="kpi-value" id="kpiTrades">—</div>
+        <div class="kpi-sub" id="kpiWinRate"></div>
+      </div>
+      <div class="kpi-card" id="kpiAutoTradeCard">
+        <div class="kpi-label">Auto-Trade</div>
+        <div class="kpi-value" id="kpiAutoTrade">—</div>
+        <div class="kpi-sub">
+          <button class="btn btn-xs" id="toggleAutoBtn" onclick="toggleAutoTrade()">Cambiar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart + Bot status row -->
+    <div class="row-2col">
+      <div class="card">
+        <div class="card-header">
+          <span>PnL Acumulado</span>
+          <span class="card-badge" id="pnlChartTotal"></span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="pnlChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Estado del Bot</div>
+        <div class="bot-status-panel" id="botStatusPanel">
+          <div class="bot-status-row">
+            <span class="label">Estado</span>
+            <span id="botRunning" class="badge">—</span>
+          </div>
+          <div class="bot-status-row">
+            <span class="label">PID</span>
+            <span id="botPid">—</span>
+          </div>
+          <div class="bot-status-row">
+            <span class="label">CPU</span>
+            <span id="botCpu">—</span>
+          </div>
+          <div class="bot-status-row">
+            <span class="label">Memoria</span>
+            <span id="botMem">—</span>
+          </div>
+          <div class="bot-status-row">
+            <span class="label">Uptime</span>
+            <span id="botUptime">—</span>
+          </div>
+          <div class="bot-status-row">
+            <span class="label">Circuit Breaker</span>
+            <span id="botCircuit">—</span>
+          </div>
+        </div>
+        <div class="bot-controls">
+          <button class="btn btn-success" onclick="controlBot('start')">▶ Iniciar</button>
+          <button class="btn btn-warning" onclick="controlBot('restart')">↺ Reiniciar</button>
+          <button class="btn btn-danger" onclick="controlBot('stop')">■ Detener</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Latest signals preview -->
+    <div class="card">
+      <div class="card-header">
+        <span>Últimas Señales</span>
+        <a href="#" class="card-link" data-section="signals">Ver todas →</a>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="signalsPreviewTable">
+          <thead><tr>
+            <th>Hora</th><th>Símbolo</th><th>Señal</th><th>Conf.</th><th>Precio</th><th>Razón</th>
+          </tr></thead>
+          <tbody id="signalsPreviewBody">
+            <tr><td colspan="6" class="empty">Sin señales recientes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── POSITIONS ─────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-positions">
+    <div class="card">
+      <div class="card-header">
+        <span>Posiciones Abiertas</span>
+        <span class="card-badge" id="positionsCount">0</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="positionsTable">
+          <thead><tr>
+            <th>Símbolo</th><th>Lado</th><th>Cant.</th>
+            <th>Entrada</th><th>Actual</th>
+            <th>PnL $</th><th>PnL %</th>
+            <th>Stop-Loss</th><th>Take-Profit</th>
+          </tr></thead>
+          <tbody id="positionsBody">
+            <tr><td colspan="9" class="empty">Sin posiciones abiertas</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SIGNALS ──────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-signals">
+    <div class="toolbar">
+      <div class="toolbar-filters">
+        <button class="filter-btn active" data-filter="all">Todas</button>
+        <button class="filter-btn" data-filter="BUY">BUY</button>
+        <button class="filter-btn" data-filter="SELL">SELL</button>
+        <button class="filter-btn" data-filter="HOLD">HOLD</button>
+      </div>
+      <div class="toolbar-right">
+        <input class="search-input" id="signalSearch" placeholder="Buscar símbolo..." />
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data-table" id="signalsTable">
+          <thead><tr>
+            <th>Timestamp</th><th>Símbolo</th><th>Señal</th>
+            <th>Conf.</th><th>Precio</th><th>ML</th><th>Reglas</th><th>RSI</th><th>Razón</th>
+          </tr></thead>
+          <tbody id="signalsBody">
+            <tr><td colspan="9" class="empty">Cargando señales...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TRADES ────────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-trades">
+    <div class="kpi-grid kpi-grid-4">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Operaciones</div>
+        <div class="kpi-value" id="statTotal">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Ganadas / Perdidas</div>
+        <div class="kpi-value" id="statWinLoss">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Win Rate</div>
+        <div class="kpi-value" id="statWinRate">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">PnL Total</div>
+        <div class="kpi-value" id="statPnl">—</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data-table" id="tradesTable">
+          <thead><tr>
+            <th>Timestamp</th><th>Símbolo</th><th>Acción</th>
+            <th>Cantidad</th><th>Precio</th><th>Stop</th><th>TP</th>
+            <th>PnL</th><th>Orden ID</th>
+          </tr></thead>
+          <tbody id="tradesBody">
+            <tr><td colspan="9" class="empty">Sin operaciones registradas</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SERVER ────────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-server">
+    <div class="row-2col">
+      <div class="card">
+        <div class="card-header">Recursos del Sistema</div>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-label">CPU</div>
+            <div class="progress-bar"><div class="progress-fill" id="cpuBar"></div></div>
+            <div class="metric-value" id="cpuVal">—</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">RAM</div>
+            <div class="progress-bar"><div class="progress-fill" id="ramBar"></div></div>
+            <div class="metric-value" id="ramVal">—</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">Disco</div>
+            <div class="progress-bar"><div class="progress-fill" id="diskBar"></div></div>
+            <div class="metric-value" id="diskVal">—</div>
+          </div>
+        </div>
+        <div class="system-info" id="systemInfo"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Control del Bot</div>
+        <div class="control-panel">
+          <div class="control-row">
+            <span class="label">Estado</span>
+            <span id="ctrlBotStatus" class="badge">—</span>
+          </div>
+          <div class="control-row">
+            <label class="toggle-label">
+              <input type="checkbox" id="ctrlAutoTrade" onchange="toggleAutoTrade()" />
+              <span class="toggle-slider"></span>
+              Auto-Trade
+            </label>
+          </div>
+          <div class="control-row">
+            <label class="toggle-label">
+              <input type="checkbox" id="ctrlPaperMode" onchange="togglePaperMode()" />
+              <span class="toggle-slider"></span>
+              Paper Trading (simulado)
+            </label>
+          </div>
+          <div class="control-actions">
+            <button class="btn btn-success btn-full" onclick="controlBot('start')">▶ Iniciar Bot</button>
+            <button class="btn btn-warning btn-full" onclick="controlBot('restart')">↺ Reiniciar Bot</button>
+            <button class="btn btn-secondary btn-full" onclick="controlBot('stop')">■ Detener Bot</button>
+            <button class="btn btn-danger btn-full" onclick="emergencyStop()">⛔ Parada de Emergencia</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bot stdout log -->
+    <div class="card">
+      <div class="card-header">
+        <span>Log de Salida del Bot</span>
+        <button class="btn btn-xs btn-secondary" onclick="refreshLogs()">Actualizar</button>
+      </div>
+      <div class="log-terminal" id="botLogTerminal">
+        <span class="log-empty">Sin logs disponibles</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CONFIG ────────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-config">
+    <div class="card">
+      <div class="card-header">
+        <span>Configuración del Sistema</span>
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick="saveConfig()">💾 Guardar</button>
+          <button class="btn btn-secondary btn-sm" onclick="loadConfig()">↺ Recargar</button>
+        </div>
+      </div>
+      <div class="config-notice">
+        ⚠ Los cambios requieren reiniciar el bot para aplicarse. Las credenciales API no se muestran aquí.
+      </div>
+      <div class="config-grid" id="configGrid">
+        <!-- Generado por JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LOGS ──────────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-logs">
+    <div class="toolbar">
+      <div class="toolbar-filters">
+        <button class="filter-btn active" data-log="system" onclick="loadLogs('system', this)">Sistema</button>
+        <button class="filter-btn" data-log="signals" onclick="loadLogs('signals', this)">Señales</button>
+        <button class="filter-btn" data-log="trades" onclick="loadLogs('trades', this)">Operaciones</button>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-xs btn-secondary" onclick="refreshCurrentLogs()">↺ Actualizar</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="log-terminal" id="logTerminal">
+        <span class="log-empty">Cargando logs...</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── MANUAL ────────────────────────────────────────────────────────────── -->
+  <section class="section" id="section-manual">
+    <div class="manual-hero">
+      <div class="manual-hero-icon">📈</div>
+      <div>
+        <h2 class="manual-hero-title">Manual de INVERDAN</h2>
+        <p class="manual-hero-sub">Guía completa para configurar, entrenar y operar el sistema de trading automático</p>
+      </div>
+    </div>
+
+    <!-- Índice rápido -->
+    <div class="manual-toc card">
+      <div class="manual-toc-title">Índice</div>
+      <div class="manual-toc-grid">
+        <a class="manual-toc-item" href="#step-credentials">1. Credenciales API</a>
+        <a class="manual-toc-item" href="#step-install">2. Instalación</a>
+        <a class="manual-toc-item" href="#step-train">3. Entrenar modelos ML</a>
+        <a class="manual-toc-item" href="#step-run">4. Arrancar el bot</a>
+        <a class="manual-toc-item" href="#step-monitor">5. Monitorizar señales</a>
+        <a class="manual-toc-item" href="#step-autotrade">6. Activar Auto-Trade</a>
+        <a class="manual-toc-item" href="#step-risk">7. Gestión de riesgo</a>
+        <a class="manual-toc-item" href="#step-live">8. Trading real</a>
+      </div>
+    </div>
+
+    <!-- ── PASO 1 ── -->
+    <div class="manual-step card" id="step-credentials">
+      <div class="manual-step-header">
+        <span class="manual-step-num">1</span>
+        <div>
+          <div class="manual-step-title">Credenciales API de Alpaca</div>
+          <div class="manual-step-sub">Conecta el bot con tu cuenta Paper Trading</div>
+        </div>
+        <span class="manual-badge badge-green">✓ Completado</span>
+      </div>
+      <div class="manual-step-body">
+        <p>Las credenciales se obtienen en <strong>Alpaca → Profile Settings → Manage Accounts → Paper Accounts</strong>. Se guardan en el fichero <code>.env</code> en la raíz del proyecto.</p>
+        <div class="manual-code">
+<pre># /Applications/MAMP/htdocs/inverdan/.env
+ALPACA_API_KEY=PKxxxxxxxxxxxxxxxxxxxxxxxxx
+ALPACA_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
+        </div>
+        <div class="manual-callout callout-info">
+          <span>ℹ</span>
+          <span>El sistema usa <strong>Paper Trading</strong> por defecto — dinero ficticio, sin riesgo real. La cuenta empieza con $100,000 simulados.</span>
+        </div>
+        <div class="manual-callout callout-warn">
+          <span>⚠</span>
+          <span>El <strong>Secret</strong> solo es visible una vez en el dashboard de Alpaca. Si lo pierdes, genera uno nuevo en la misma sección.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 2 ── -->
+    <div class="manual-step card" id="step-install">
+      <div class="manual-step-header">
+        <span class="manual-step-num">2</span>
+        <div>
+          <div class="manual-step-title">Instalación de dependencias</div>
+          <div class="manual-step-sub">Python 3.9+ requerido</div>
+        </div>
+        <span class="manual-badge badge-green">✓ Completado</span>
+      </div>
+      <div class="manual-step-body">
+        <p>Instala todas las librerías necesarias desde el directorio del proyecto:</p>
+        <div class="manual-code">
+<pre>cd /Applications/MAMP/htdocs/inverdan
+
+# Dependencias base
+pip3 install -r requirements.txt
+
+# Librería de Alpaca (trading + datos)
+pip3 install alpaca-py</pre>
+        </div>
+        <div class="manual-tech-grid">
+          <div class="manual-tech-item"><span class="tech-badge">alpaca-py</span> Broker + datos de mercado</div>
+          <div class="manual-tech-item"><span class="tech-badge">pandas</span> Manipulación de datos</div>
+          <div class="manual-tech-item"><span class="tech-badge">ta</span> Indicadores técnicos</div>
+          <div class="manual-tech-item"><span class="tech-badge">scikit-learn</span> Modelo RandomForest ML</div>
+          <div class="manual-tech-item"><span class="tech-badge">rich</span> Dashboard terminal</div>
+          <div class="manual-tech-item"><span class="tech-badge">flask</span> Dashboard web</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 3 ── -->
+    <div class="manual-step card" id="step-train">
+      <div class="manual-step-header">
+        <span class="manual-step-num">3</span>
+        <div>
+          <div class="manual-step-title">Entrenar los modelos ML</div>
+          <div class="manual-step-sub">RandomForest por símbolo · ~5-10 minutos</div>
+        </div>
+        <span class="manual-badge badge-yellow">⏳ Pendiente</span>
+      </div>
+      <div class="manual-step-body">
+        <p>El script <code>train.py</code> descarga 1 año de datos históricos por símbolo, calcula todos los indicadores técnicos y entrena un modelo RandomForest para cada uno.</p>
+        <div class="manual-code">
+<pre># Entrenar todos los símbolos del config.yaml (recomendado)
+python3 train.py
+
+# Entrenar solo algunos símbolos
+python3 train.py --symbols AAPL TSLA NVDA
+
+# Reentrenar forzando (aunque ya existan modelos)
+python3 train.py --force
+
+# Ver progreso y métricas
+python3 train.py --symbols AAPL</pre>
+        </div>
+        <div class="manual-callout callout-info">
+          <span>ℹ</span>
+          <span>Los modelos se guardan en <code>models/</code>. Repite el entrenamiento cada 2-4 semanas para mantenerlos actualizados con datos recientes.</span>
+        </div>
+        <div class="manual-flow">
+          <div class="flow-step">Datos históricos<br><small>Alpaca API</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Indicadores<br><small>RSI, MACD, BB…</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Features<br><small>21 variables</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">RandomForest<br><small>BUY/SELL/HOLD</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Modelo<br><small>models/*.joblib</small></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 4 ── -->
+    <div class="manual-step card" id="step-run">
+      <div class="manual-step-header">
+        <span class="manual-step-num">4</span>
+        <div>
+          <div class="manual-step-title">Arrancar el bot</div>
+          <div class="manual-step-sub">Dos terminales: bot + dashboard web</div>
+        </div>
+        <span class="manual-badge badge-yellow">⏳ Pendiente</span>
+      </div>
+      <div class="manual-step-body">
+        <p>El sistema tiene dos componentes que corren por separado:</p>
+        <div class="manual-two-col">
+          <div>
+            <div class="manual-col-title">Terminal 1 — El Bot</div>
+            <div class="manual-code">
+<pre># Modo monitorización (sin órdenes)
+python3 main.py --no-dashboard
+
+# Con dashboard en terminal (alternativo)
+python3 main.py
+
+# Con símbolos específicos
+python3 main.py --no-dashboard \
+  --symbols AAPL TSLA NVDA</pre>
+            </div>
+          </div>
+          <div>
+            <div class="manual-col-title">Terminal 2 — Dashboard Web</div>
+            <div class="manual-code">
+<pre># Arranca este dashboard
+./start_dashboard.sh
+
+# Puerto alternativo
+./start_dashboard.sh 8080
+
+# Acceder en el navegador:
+# http://localhost:5050</pre>
+            </div>
+          </div>
+        </div>
+        <div class="manual-callout callout-info">
+          <span>ℹ</span>
+          <span>El bot precarga los últimos 5 días de datos históricos al arrancar para que los indicadores tengan contexto suficiente antes de analizar el mercado en tiempo real.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 5 ── -->
+    <div class="manual-step card" id="step-monitor">
+      <div class="manual-step-header">
+        <span class="manual-step-num">5</span>
+        <div>
+          <div class="manual-step-title">Monitorizar señales</div>
+          <div class="manual-step-sub">Mercado abierto: lunes–viernes 15:30–22:00 hora española</div>
+        </div>
+        <span class="manual-badge badge-yellow">⏳ Pendiente</span>
+      </div>
+      <div class="manual-step-body">
+        <p>Con el bot corriendo y el mercado abierto, verás señales en tiempo real en este dashboard. El sistema genera tres tipos:</p>
+        <div class="manual-signal-grid">
+          <div class="signal-card signal-buy">
+            <div class="signal-label">BUY</div>
+            <div class="signal-desc">Señal de compra. Reglas técnicas y ML detectan condiciones alcistas con confianza &ge;65%.</div>
+          </div>
+          <div class="signal-card signal-sell">
+            <div class="signal-label">SELL</div>
+            <div class="signal-desc">Señal de venta/bajista. Sobrecompra detectada o tendencia de caída confirmada por ML.</div>
+          </div>
+          <div class="signal-card signal-hold">
+            <div class="signal-label">HOLD</div>
+            <div class="signal-desc">Sin señal clara. Reglas y ML no están de acuerdo, o la confianza es insuficiente.</div>
+          </div>
+        </div>
+        <div class="manual-callout callout-warn">
+          <span>⚠</span>
+          <span>Observa las señales durante <strong>1-2 semanas</strong> sin Auto-Trade activo. Comprueba que tienen sentido antes de dejar que el bot opere por su cuenta.</span>
+        </div>
+        <p style="margin-top:12px">Qué validar antes de activar Auto-Trade:</p>
+        <ul class="manual-checklist">
+          <li>Las señales BUY y SELL coinciden con movimientos reales del precio</li>
+          <li>El win rate estimado supera el 55%</li>
+          <li>Los indicadores RSI, MACD y BB tienen valores coherentes</li>
+          <li>La confianza media de las señales está por encima del 65%</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── PASO 6 ── -->
+    <div class="manual-step card" id="step-autotrade">
+      <div class="manual-step-header">
+        <span class="manual-step-num">6</span>
+        <div>
+          <div class="manual-step-title">Activar Auto-Trade</div>
+          <div class="manual-step-sub">El bot ejecuta órdenes automáticamente</div>
+        </div>
+        <span class="manual-badge badge-yellow">⏳ Pendiente</span>
+      </div>
+      <div class="manual-step-body">
+        <p>Hay dos formas de activar el trading automático:</p>
+        <div class="manual-two-col">
+          <div>
+            <div class="manual-col-title">Opción A — Desde el dashboard</div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Ve a <strong>Servidor → Control del Bot → toggle Auto-Trade</strong> o usa el botón "Cambiar" en la tarjeta del Resumen.</p>
+            <div class="manual-callout callout-info" style="margin:0">
+              <span>ℹ</span>
+              <span>El bot detecta el cambio en <code>state.json</code> sin necesidad de reiniciarse.</span>
+            </div>
+          </div>
+          <div>
+            <div class="manual-col-title">Opción B — Al arrancar</div>
+            <div class="manual-code">
+<pre>python3 main.py \
+  --no-dashboard \
+  --auto-trade</pre>
+            </div>
+          </div>
+        </div>
+        <p style="margin-top:16px">Cada operación utiliza <strong>órdenes bracket</strong>: una orden principal de entrada más stop-loss y take-profit automáticos que viven en los servidores de Alpaca, independientemente de si el bot está corriendo.</p>
+        <div class="manual-flow">
+          <div class="flow-step">Señal BUY/SELL<br><small>conf &ge;65%</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">RiskManager<br><small>circuit breakers</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Tamaño<br><small>ATR sizing</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Orden Bracket<br><small>entrada + SL + TP</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Alpaca<br><small>ejecuta</small></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 7 ── -->
+    <div class="manual-step card" id="step-risk">
+      <div class="manual-step-header">
+        <span class="manual-step-num">7</span>
+        <div>
+          <div class="manual-step-title">Gestión de riesgo</div>
+          <div class="manual-step-sub">Circuit breakers y límites automáticos</div>
+        </div>
+        <span class="manual-badge badge-accent">Siempre activo</span>
+      </div>
+      <div class="manual-step-body">
+        <p>El <strong>RiskManager</strong> protege el capital con varias capas de seguridad. Todos los parámetros son configurables en <a href="#" onclick="navigate('config')" class="manual-link">Configuración</a>.</p>
+        <div class="manual-risk-grid">
+          <div class="risk-item">
+            <div class="risk-title">Max. posición</div>
+            <div class="risk-val" id="riskMaxPos">5%</div>
+            <div class="risk-desc">del portfolio por símbolo</div>
+          </div>
+          <div class="risk-item">
+            <div class="risk-title">Pérdida diaria máx.</div>
+            <div class="risk-val" id="riskMaxLoss">5%</div>
+            <div class="risk-desc">activa el circuit breaker</div>
+          </div>
+          <div class="risk-item">
+            <div class="risk-title">Stop-loss</div>
+            <div class="risk-val">2× ATR</div>
+            <div class="risk-desc">server-side en Alpaca</div>
+          </div>
+          <div class="risk-item">
+            <div class="risk-title">Take-profit</div>
+            <div class="risk-val">4× ATR</div>
+            <div class="risk-desc">ratio riesgo/beneficio 1:2</div>
+          </div>
+          <div class="risk-item">
+            <div class="risk-title">Pérdidas consecutivas</div>
+            <div class="risk-val" id="riskMaxLosses">5</div>
+            <div class="risk-desc">pausa automática del bot</div>
+          </div>
+          <div class="risk-item">
+            <div class="risk-title">Exposición total</div>
+            <div class="risk-val">80%</div>
+            <div class="risk-desc">máximo del portfolio invertido</div>
+          </div>
+        </div>
+        <div class="manual-callout callout-danger">
+          <span>⛔</span>
+          <span>Usa el botón <strong>EMERGENCIA</strong> (arriba a la derecha) para detener el bot instantáneamente. Los stop-loss seguirán activos en Alpaca aunque el bot esté parado.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 8 ── -->
+    <div class="manual-step card" id="step-live">
+      <div class="manual-step-header">
+        <span class="manual-step-num">8</span>
+        <div>
+          <div class="manual-step-title">Pasar a trading real</div>
+          <div class="manual-step-sub">Solo cuando las métricas paper sean positivas</div>
+        </div>
+        <span class="manual-badge badge-red">⚠ Avanzado</span>
+      </div>
+      <div class="manual-step-body">
+        <div class="manual-callout callout-danger" style="margin-bottom:16px">
+          <span>⛔</span>
+          <span>Opera con <strong>dinero ficticio al menos 2-4 semanas</strong> antes de considerar el trading real. Las pérdidas en live son reales e irrecuperables.</span>
+        </div>
+        <p>Métricas mínimas recomendadas en Paper Trading antes de pasar a Live:</p>
+        <ul class="manual-checklist">
+          <li>Win rate &gt; 55% durante al menos 50 operaciones</li>
+          <li>Sharpe Ratio &gt; 1.0</li>
+          <li>Max Drawdown &lt; 10%</li>
+          <li>PnL total positivo durante 4+ semanas consecutivas</li>
+        </ul>
+        <p style="margin-top:16px">Cuando estés listo, el proceso es:</p>
+        <div class="manual-code">
+<pre># 1. Abre una cuenta Live en Alpaca (requiere verificación KYC)
+#    → app.alpaca.markets → "Open Live Account"
+
+# 2. Genera nuevas API Keys Live en Alpaca
+#    → Profile Settings → Manage Accounts → Live Accounts
+
+# 3. Añade las keys al .env
+ALPACA_API_KEY=TU_LIVE_API_KEY
+ALPACA_API_SECRET=TU_LIVE_API_SECRET
+
+# 4. Cambia paper_trading en config.yaml
+alpaca:
+  paper_trading: false   # ← CAMBIO CRÍTICO
+
+# 5. Reinicia el bot
+python3 main.py --no-dashboard --auto-trade</pre>
+        </div>
+        <div class="manual-callout callout-warn">
+          <span>⚠</span>
+          <span>Empieza con capital mínimo ($500–1.000) y ve escalando gradualmente. Nunca inviertas más de lo que puedas permitirte perder.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arquitectura -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-header">Arquitectura del sistema</div>
+      <div class="manual-arch">
+        <div class="arch-layer">
+          <div class="arch-label">DATOS</div>
+          <div class="arch-boxes">
+            <div class="arch-box">Alpaca WebSocket<br><small>barras 1min</small></div>
+            <div class="arch-box">SymbolBuffer<br><small>500 barras/símbolo</small></div>
+            <div class="arch-box">Histórico<br><small>warm-up inicial</small></div>
+          </div>
+        </div>
+        <div class="arch-arrow">↓</div>
+        <div class="arch-layer">
+          <div class="arch-label">ANÁLISIS</div>
+          <div class="arch-boxes">
+            <div class="arch-box">RSI · MACD · BB<br><small>Indicadores técnicos</small></div>
+            <div class="arch-box">EMA · ATR · Stoch<br><small>21 features ML</small></div>
+            <div class="arch-box">RandomForest<br><small>BUY/SELL/HOLD</small></div>
+          </div>
+        </div>
+        <div class="arch-arrow">↓</div>
+        <div class="arch-layer">
+          <div class="arch-label">EJECUCIÓN</div>
+          <div class="arch-boxes">
+            <div class="arch-box">RiskManager<br><small>circuit breakers</small></div>
+            <div class="arch-box">TradeExecutor<br><small>bracket orders</small></div>
+            <div class="arch-box">Alpaca API<br><small>ejecución real</small></div>
+          </div>
+        </div>
+        <div class="arch-arrow">↓</div>
+        <div class="arch-layer">
+          <div class="arch-label">MONITORIZACIÓN</div>
+          <div class="arch-boxes">
+            <div class="arch-box">state.json<br><small>estado en tiempo real</small></div>
+            <div class="arch-box">logs/*.log<br><small>audit trail</small></div>
+            <div class="arch-box">Dashboard Web<br><small>este panel</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<!-- ═══ TOAST ════════════════════════════════════════════════════════════════ -->
+<div id="toastContainer"></div>
+
+<!-- ═══ MODAL DE CONFIRMACIÓN ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" id="modalConfirmBtn">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
