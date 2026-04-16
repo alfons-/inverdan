@@ -401,6 +401,7 @@
         <a class="manual-toc-item" href="#step-autotrade">6. Activar Auto-Trade</a>
         <a class="manual-toc-item" href="#step-risk">7. Gestión de riesgo</a>
         <a class="manual-toc-item" href="#step-live">8. Trading real</a>
+        <a class="manual-toc-item" href="#step-git">9. Flujo con GitHub</a>
       </div>
     </div>
 
@@ -735,6 +736,102 @@ python3 main.py --no-dashboard --auto-trade</pre>
         <div class="manual-callout callout-warn">
           <span>⚠</span>
           <span>Empieza con capital mínimo ($500–1.000) y ve escalando gradualmente. Nunca inviertas más de lo que puedas permitirte perder.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 9 ── -->
+    <div class="manual-step card" id="step-git">
+      <div class="manual-step-header">
+        <span class="manual-step-num">9</span>
+        <div>
+          <div class="manual-step-title">Flujo de trabajo con GitHub</div>
+          <div class="manual-step-sub">Guarda y sincroniza los cambios del proyecto</div>
+        </div>
+        <span class="manual-badge badge-accent">Recomendado</span>
+      </div>
+      <div class="manual-step-body">
+        <p>El repositorio está en <a class="manual-link" href="https://github.com/alfons-/inverdan" target="_blank">github.com/alfons-/inverdan</a>. Usa este flujo cada vez que modifiques algo — configuración, código, modelos, etc.</p>
+
+        <div class="manual-col-title" style="margin-bottom:8px">Ciclo diario habitual</div>
+        <div class="manual-code">
+<pre><span class="comment"># 1. Ver qué ha cambiado</span>
+git status
+git diff
+
+<span class="comment"># 2. Añadir los cambios (revisa uno a uno con -p)</span>
+git add -p                     <span class="comment"># interactivo, recomendado</span>
+git add config.yaml            <span class="comment"># o fichero concreto</span>
+
+<span class="comment"># 3. Guardar el commit con descripción clara</span>
+git commit -m "feat: añadir símbolo META al config"
+
+<span class="comment"># 4. Subir a GitHub</span>
+git push</pre>
+        </div>
+
+        <div class="manual-two-col" style="margin-top:16px">
+          <div>
+            <div class="manual-col-title">Historial y estado</div>
+            <div class="manual-code">
+<pre><span class="comment"># Ver commits recientes</span>
+git log --oneline
+
+<span class="comment"># Ver cambios sin confirmar</span>
+git diff
+
+<span class="comment"># Ver qué está staged</span>
+git diff --staged</pre>
+            </div>
+          </div>
+          <div>
+            <div class="manual-col-title">Desde otro ordenador</div>
+            <div class="manual-code">
+<pre><span class="comment"># Clonar el proyecto</span>
+git clone https://github.com/\
+  alfons-/inverdan.git
+cd inverdan
+cp .env.example .env
+<span class="comment"># → rellena tus API keys en .env</span>
+pip3 install -r requirements.txt
+pip3 install alpaca-py</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="manual-col-title" style="margin:16px 0 8px">Qué se guarda en Git y qué no</div>
+        <div class="manual-two-col">
+          <div>
+            <div class="manual-code" style="border-color:rgba(34,197,94,.3)">
+<pre style="color:#86efac"><span class="comment"># ✓ SÍ se guarda</span>
+config.yaml
+requirements.txt
+inverdan/  (código)
+web/       (dashboard)
+train.py / main.py
+.env.example (sin keys reales)</pre>
+            </div>
+          </div>
+          <div>
+            <div class="manual-code" style="border-color:rgba(239,68,68,.3)">
+<pre style="color:#fca5a5"><span class="comment"># ✗ NO se guarda (.gitignore)</span>
+.env           (API keys reales)
+models/*.joblib (modelos ~50MB)
+data/historical/ (datos ~GB)
+logs/
+state.json
+bot.pid</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="manual-callout callout-info" style="margin-top:12px">
+          <span>ℹ</span>
+          <span>Los modelos entrenados (<code>models/*.joblib</code>) no se sincronizan — cada instalación nueva debe ejecutar <code>python3 train.py</code> para regenerarlos.</span>
+        </div>
+        <div class="manual-callout callout-warn">
+          <span>⚠</span>
+          <span>Nunca hagas <code>git add .env</code>. El fichero <code>.env</code> contiene tus API keys reales y está excluido por el <code>.gitignore</code>. Si lo subes accidentalmente, regenera las keys en Alpaca inmediatamente.</span>
         </div>
       </div>
     </div>

@@ -803,6 +803,7 @@ html, body {
   white-space: pre;
   line-height: 1.65;
 }
+.manual-code .comment { color: #6b7280; font-style: italic; }
 
 /* Callouts */
 .manual-callout {
