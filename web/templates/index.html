@@ -427,6 +427,7 @@
         <a class="manual-toc-item" href="#step-risk">7. Gestión de riesgo</a>
         <a class="manual-toc-item" href="#step-live">8. Trading real</a>
         <a class="manual-toc-item" href="#step-git">9. Flujo con GitHub</a>
+        <a class="manual-toc-item" href="#step-config">10. Referencia de configuración</a>
       </div>
     </div>
 
@@ -857,6 +858,95 @@ bot.pid</pre>
         <div class="manual-callout callout-warn">
           <span>⚠</span>
           <span>Nunca hagas <code>git add .env</code>. El fichero <code>.env</code> contiene tus API keys reales y está excluido por el <code>.gitignore</code>. Si lo subes accidentalmente, regenera las keys en Alpaca inmediatamente.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PASO 10 ── -->
+    <div class="manual-step card" id="step-config">
+      <div class="manual-step-header">
+        <span class="manual-step-num">10</span>
+        <div>
+          <div class="manual-step-title">Referencia de configuración</div>
+          <div class="manual-step-sub">Todos los parámetros de <code>config.yaml</code> explicados</div>
+        </div>
+        <span class="manual-badge badge-accent">Referencia</span>
+      </div>
+      <div class="manual-step-body">
+        <p>Edita <code>config.yaml</code> en la raíz del proyecto o usa la sección <a href="#" onclick="navigate('config')" class="manual-link">Configuración</a> del dashboard. Los cambios requieren reiniciar el bot.</p>
+
+        <!-- ALPACA -->
+        <div class="manual-col-title" style="margin:16px 0 10px">🔗 Alpaca</div>
+        <div class="conf-table">
+          <div class="conf-row conf-header"><span>Parámetro · Valor</span><span>Qué hace</span></div>
+          <div class="conf-row"><div><code>paper_trading</code><span class="conf-val">true</span></div><span>Usa dinero ficticio. Cámbialo a <strong>false</strong> solo para trading real</span></div>
+          <div class="conf-row"><div><code>data_feed</code><span class="conf-val">iex</span></div><span><strong>iex</strong> = gratuito · <strong>sip</strong> = datos consolidados (de pago)</span></div>
+        </div>
+
+        <!-- SÍMBOLOS -->
+        <div class="manual-col-title" style="margin:16px 0 10px">📊 Símbolos y barras</div>
+        <div class="conf-table">
+          <div class="conf-row conf-header"><span>Parámetro · Valor</span><span>Qué hace</span></div>
+          <div class="conf-row"><div><code>symbols</code><span class="conf-val">AAPL, TSLA…</span></div><span>Activos que monitoriza el bot</span></div>
+          <div class="conf-row"><div><code>timeframe</code><span class="conf-val">1Min</span></div><span>Granularidad de las velas (1Min = una vela por minuto)</span></div>
+          <div class="conf-row"><div><code>bar_buffer_size</code><span class="conf-val">500</span></div><span>Barras en memoria por símbolo (~8h de mercado)</span></div>
+        </div>
+
+        <!-- INDICADORES -->
+        <div class="manual-col-title" style="margin:16px 0 10px">📈 Indicadores técnicos</div>
+        <div class="conf-table">
+          <div class="conf-row conf-header"><span>Parámetro · Valor</span><span>Qué hace</span></div>
+          <div class="conf-row"><div><code>rsi_period</code><span class="conf-val">14</span></div><span>Período del RSI (estándar del mercado)</span></div>
+          <div class="conf-row"><div><code>macd_fast/slow/signal</code><span class="conf-val">12/26/9</span></div><span>Períodos del MACD — configuración clásica</span></div>
+          <div class="conf-row"><div><code>bb_period</code><span class="conf-val">20</span></div><span>Período de las Bandas de Bollinger</span></div>
+          <div class="conf-row"><div><code>bb_std</code><span class="conf-val">2.0</span></div><span>Desviaciones estándar de las bandas (±2σ cubre el 95% del precio)</span></div>
+          <div class="conf-row"><div><code>ema_fast / ema_slow</code><span class="conf-val">9 / 21</span></div><span>EMAs para detectar cruces de tendencia</span></div>
+          <div class="conf-row"><div><code>sma_200</code><span class="conf-val">200</span></div><span>Media larga para filtrar la tendencia principal</span></div>
+          <div class="conf-row"><div><code>atr_period</code><span class="conf-val">14</span></div><span>Período del ATR — mide volatilidad, se usa para SL/TP</span></div>
+          <div class="conf-row"><div><code>stoch_k / stoch_d</code><span class="conf-val">14 / 3</span></div><span>Períodos del Oscilador Estocástico</span></div>
+        </div>
+
+        <!-- ML -->
+        <div class="manual-col-title" style="margin:16px 0 10px">🤖 Machine Learning</div>
+        <div class="conf-table">
+          <div class="conf-row conf-header"><span>Parámetro · Valor</span><span>Qué hace</span></div>
+          <div class="conf-row"><div><code>confidence_threshold</code><span class="conf-val">0.65</span></div><span>Confianza mínima del ML para emitir señal. Súbelo para ser más conservador</span></div>
+          <div class="conf-row"><div><code>feature_lookback</code><span class="conf-val">20</span></div><span>Barras anteriores que usa el modelo como contexto</span></div>
+          <div class="conf-row"><div><code>min_bars_required</code><span class="conf-val">50</span></div><span>El bot no genera señales hasta acumular 50 barras (~50 min al arrancar)</span></div>
+          <div class="conf-row"><div><code>model_type</code><span class="conf-val">random_forest</span></div><span>Algoritmo ML utilizado</span></div>
+        </div>
+
+        <!-- RIESGO -->
+        <div class="manual-col-title" style="margin:16px 0 10px">🛡️ Gestión de riesgo</div>
+        <div class="conf-table">
+          <div class="conf-row conf-header"><span>Parámetro · Valor</span><span>Qué hace</span></div>
+          <div class="conf-row"><div><code>max_position_pct</code><span class="conf-val">0.05</span></div><span>Máximo <strong>5%</strong> del portfolio en un solo símbolo</span></div>
+          <div class="conf-row"><div><code>max_total_exposure</code><span class="conf-val">0.80</span></div><span>Nunca invertir más del <strong>80%</strong> del capital total</span></div>
+          <div class="conf-row"><div><code>stop_loss_atr_multiplier</code><span class="conf-val">2.0</span></div><span>Stop-loss = precio entrada − 2×ATR</span></div>
+          <div class="conf-row"><div><code>take_profit_atr_multiplier</code><span class="conf-val">4.0</span></div><span>Take-profit = precio entrada + 4×ATR (ratio riesgo/beneficio 1:2)</span></div>
+          <div class="conf-row"><div><code>max_daily_loss_pct</code><span class="conf-val">0.05</span></div><span>Si pierdes el <strong>5%</strong> en un día, el bot para automáticamente</span></div>
+          <div class="conf-row"><div><code>max_consecutive_losses</code><span class="conf-val">5</span></div><span>Pausa automática tras 5 pérdidas seguidas</span></div>
+          <div class="conf-row"><div><code>max_orders_per_minute</code><span class="conf-val">3</span></div><span>Máximo 3 órdenes por minuto (evita el rate-limit de Alpaca)</span></div>
+          <div class="conf-row"><div><code>min_stock_price</code><span class="conf-val">5.0</span></div><span>Ignora acciones por debajo de $5 (penny stocks)</span></div>
+          <div class="conf-row"><div><code>min_daily_volume</code><span class="conf-val">500.000</span></div><span>Ignora activos con menos de 500k acciones/día (baja liquidez)</span></div>
+        </div>
+
+        <!-- ENTRENAMIENTO -->
+        <div class="manual-col-title" style="margin:16px 0 10px">🎓 Entrenamiento ML</div>
+        <div class="conf-table">
+          <div class="conf-row conf-header"><span>Parámetro · Valor</span><span>Qué hace</span></div>
+          <div class="conf-row"><div><code>lookback_days</code><span class="conf-val">365</span></div><span>Descarga 1 año de datos históricos para entrenar</span></div>
+          <div class="conf-row"><div><code>forward_return_periods</code><span class="conf-val">5</span></div><span>Etiqueta cada barra según el retorno de los próximos 5 minutos</span></div>
+          <div class="conf-row"><div><code>buy_threshold</code><span class="conf-val">0.005</span></div><span>Si el precio sube &gt;0.5% en 5 min → etiqueta BUY</span></div>
+          <div class="conf-row"><div><code>sell_threshold</code><span class="conf-val">-0.005</span></div><span>Si baja &gt;0.5% en 5 min → etiqueta SELL</span></div>
+          <div class="conf-row"><div><code>n_estimators</code><span class="conf-val">200</span></div><span>Número de árboles del RandomForest (más = más preciso pero más lento)</span></div>
+          <div class="conf-row"><div><code>max_depth</code><span class="conf-val">10</span></div><span>Profundidad máxima de cada árbol (evita sobreajuste)</span></div>
+          <div class="conf-row"><div><code>test_split</code><span class="conf-val">0.2</span></div><span>20% de los datos se reservan para validar el modelo</span></div>
+        </div>
+
+        <div class="manual-callout callout-info" style="margin-top:16px">
+          <span>ℹ</span>
+          <span>Los parámetros de <strong>indicadores</strong> y <strong>riesgo</strong> se aplican inmediatamente al reiniciar el bot. Los de <strong>entrenamiento</strong> solo afectan a la próxima ejecución de <code>python3 train.py</code>.</span>
         </div>
       </div>
     </div>
