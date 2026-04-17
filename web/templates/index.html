@@ -46,6 +46,11 @@
       <span>Logs</span>
     </a>
 
+    <a href="#" class="nav-item" data-section="market">
+      <svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 16l4-4 4 4 4-4"/></svg>
+      <span>Mercado</span>
+    </a>
+
     <div class="nav-divider"></div>
 
     <a href="#" class="nav-item" data-section="manual">
@@ -380,6 +385,26 @@
   </section>
 
   <!-- ── MANUAL ────────────────────────────────────────────────────────────── -->
+  <!-- ═══ MERCADO ════════════════════════════════════════════════════════════ -->
+  <section class="section" id="section-market">
+    <div class="market-header">
+      <div>
+        <div class="market-title">Mercado en tiempo real</div>
+        <div class="market-subtitle">Indicadores técnicos de la última barra cerrada por símbolo</div>
+      </div>
+      <div class="market-updated">Actualizado: <span id="marketLastUpdate">—</span></div>
+    </div>
+
+    <div id="marketGrid" class="market-grid">
+      <!-- Cards generadas por JS -->
+      <div class="market-empty">
+        <div class="market-empty-icon">📡</div>
+        <div>Esperando datos del bot...</div>
+        <div style="font-size:12px;margin-top:6px;color:var(--text-muted)">Arranca el bot con <code>python3 main.py --no-dashboard</code></div>
+      </div>
+    </div>
+  </section>
+
   <section class="section" id="section-manual">
     <div class="manual-hero">
       <div class="manual-hero-icon">📈</div>

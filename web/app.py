@@ -393,6 +393,13 @@ def api_pnl_history():
     return jsonify({"history": history})
 
 
+@app.route("/api/market")
+def api_market():
+    """Último snapshot de indicadores por símbolo."""
+    state = read_state()
+    return jsonify({"market": state.get("market", {})})
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=5050)

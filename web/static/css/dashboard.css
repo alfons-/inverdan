@@ -685,6 +685,138 @@ html, body {
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
+/* ── MERCADO ─────────────────────────────────────────── */
+.market-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+}
+.market-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.market-subtitle { font-size: 13px; color: var(--text-secondary); }
+.market-updated { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.market-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.market-empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+/* Symbol card */
+.mkt-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  transition: border-color .2s;
+}
+.mkt-card:hover { border-color: var(--border-light); }
+
+.mkt-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.mkt-symbol {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: .04em;
+}
+.mkt-price {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.mkt-ts {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+/* Indicator grid */
+.mkt-indicators {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px 4px;
+  margin-bottom: 12px;
+}
+.mkt-ind {
+  background: rgba(255,255,255,.03);
+  border-radius: 6px;
+  padding: 7px 8px;
+}
+.mkt-ind-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.mkt-ind-val {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Indicator colors */
+.ind-green   { color: var(--green); }
+.ind-red     { color: var(--red); }
+.ind-yellow  { color: var(--yellow); }
+.ind-accent  { color: var(--accent); }
+.ind-neutral { color: var(--text-primary); }
+
+/* BB% bar */
+.mkt-bb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mkt-bb-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,.07);
+  border-radius: 3px;
+  position: relative;
+}
+.mkt-bb-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--accent), var(--red));
+  border-radius: 3px;
+  max-width: 100%;
+}
+.mkt-bb-cursor {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: #fff;
+  border-radius: 1px;
+  transform: translateX(-50%);
+}
+
+/* EMA row */
+.mkt-ema-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── MANUAL ──────────────────────────────────────────── */
 /* Hero banner */
 .manual-hero {

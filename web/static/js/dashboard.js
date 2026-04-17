@@ -86,7 +86,7 @@ function navigate(section) {
   const titles = {
     overview: 'Resumen', positions: 'Posiciones', signals: 'Señales',
     trades: 'Operaciones', server: 'Servidor', config: 'Configuración', logs: 'Logs',
-    manual: 'Manual de Usuario'
+    market: 'Mercado', manual: 'Manual de Usuario'
   };
   $('pageTitle').textContent = titles[section] || section;
   state.section = section;
@@ -96,6 +96,7 @@ function navigate(section) {
   if (section === 'config')  loadConfig();
   if (section === 'logs')    loadLogs('system');
   if (section === 'server')  fetchStatus();
+  if (section === 'market')  fetchMarket();
 }
 
 document.querySelectorAll('.nav-item, .card-link').forEach(el => {
@@ -722,6 +723,101 @@ async function refreshAll() {
   if (state.section === 'signals') await fetchSignals();
   if (state.section === 'trades')  await fetchTrades();
   if (state.section === 'server')  await refreshLogs();
+  if (state.section === 'market')  await fetchMarket();
+}
+
+// ── MERCADO ───────────────────────────────────────────────
+async function fetchMarket() {
+  try {
+    const data = await fetch('/api/market').then(r => r.json());
+    renderMarket(data.market || {});
+  } catch(e) { console.error('fetchMarket:', e); }
+}
+
+function renderMarket(market) {
+  const grid = document.getElementById('marketGrid');
+  if (!grid) return;
+
+  const symbols = Object.keys(market);
+  if (symbols.length === 0) {
+    grid.innerHTML = `<div class="market-empty">
+      <div class="market-empty-icon">📡</div>
+      <div>Esperando datos del bot...</div>
+      <div style="font-size:12px;margin-top:6px;color:var(--text-muted)">Arranca el bot con <code>python3 main.py --no-dashboard</code></div>
+    </div>`;
+    return;
+  }
+
+  // Timestamp global de última actualización
+  const latest = symbols.reduce((a, s) => {
+    const t = market[s].updated_at || '';
+    return t > a ? t : a;
+  }, '');
+  const upd = document.getElementById('marketLastUpdate');
+  if (upd && latest) upd.textContent = new Date(latest + 'Z').toLocaleTimeString('es-ES');
+
+  grid.innerHTML = symbols.map(sym => {
+    const d = market[sym];
+    const rsiCls = d.rsi >= 70 ? 'ind-red' : d.rsi <= 30 ? 'ind-green' : 'ind-neutral';
+    const macdCls = d.macd_hist > 0 ? 'ind-green' : d.macd_hist < 0 ? 'ind-red' : 'ind-neutral';
+    const bbCls = d.bb_pct > 0.8 ? 'ind-red' : d.bb_pct < 0.2 ? 'ind-green' : 'ind-neutral';
+    const volCls = d.volume_ratio >= 2 ? 'ind-yellow' : d.volume_ratio >= 1.5 ? 'ind-accent' : 'ind-neutral';
+    const adxStr = d.adx >= 25 ? `<span class="ind-accent">${d.adx}</span>` : `<span class="ind-neutral">${d.adx}</span>`;
+    const emaCross = d.ema_fast > d.ema_slow ? '▲ Alcista' : d.ema_fast < d.ema_slow ? '▼ Bajista' : '= Lateral';
+    const emaCrossCls = d.ema_fast > d.ema_slow ? 'ind-green' : d.ema_fast < d.ema_slow ? 'ind-red' : 'ind-neutral';
+    const bbPctBar = Math.min(100, Math.max(0, d.bb_pct * 100)).toFixed(0);
+    const ts = d.updated_at ? new Date(d.updated_at + 'Z').toLocaleTimeString('es-ES') : '—';
+
+    return `<div class="mkt-card">
+      <div class="mkt-card-header">
+        <span class="mkt-symbol">${sym}</span>
+        <span class="mkt-price">$${d.close.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+      </div>
+      <div class="mkt-ts">${ts} · ${d.bars} barras</div>
+
+      <div class="mkt-indicators">
+        <div class="mkt-ind">
+          <span class="mkt-ind-label">RSI</span>
+          <span class="mkt-ind-val ${rsiCls}">${d.rsi}</span>
+        </div>
+        <div class="mkt-ind">
+          <span class="mkt-ind-label">MACD hist</span>
+          <span class="mkt-ind-val ${macdCls}">${d.macd_hist > 0 ? '+' : ''}${d.macd_hist.toFixed(3)}</span>
+        </div>
+        <div class="mkt-ind">
+          <span class="mkt-ind-label">ADX</span>
+          <span class="mkt-ind-val">${adxStr}</span>
+        </div>
+        <div class="mkt-ind">
+          <span class="mkt-ind-label">ATR</span>
+          <span class="mkt-ind-val ind-neutral">${d.atr.toFixed(2)}</span>
+        </div>
+        <div class="mkt-ind">
+          <span class="mkt-ind-label">Vol ratio</span>
+          <span class="mkt-ind-val ${volCls}">${d.volume_ratio.toFixed(1)}×</span>
+        </div>
+        <div class="mkt-ind">
+          <span class="mkt-ind-label">Stoch %K</span>
+          <span class="mkt-ind-val ${d.stoch_k >= 80 ? 'ind-red' : d.stoch_k <= 20 ? 'ind-green' : 'ind-neutral'}">${d.stoch_k}</span>
+        </div>
+      </div>
+
+      <div class="mkt-bb-row">
+        <span class="mkt-ind-label">BB%</span>
+        <div class="mkt-bb-track">
+          <div class="mkt-bb-fill" style="width:${bbPctBar}%"></div>
+          <div class="mkt-bb-cursor" style="left:${bbPctBar}%"></div>
+        </div>
+        <span class="mkt-ind-val ${bbCls}">${(d.bb_pct * 100).toFixed(0)}%</span>
+      </div>
+
+      <div class="mkt-ema-row">
+        <span class="mkt-ind-label">EMA</span>
+        <span class="mkt-ind-val ${emaCrossCls}">${emaCross}</span>
+        <span class="mkt-ind-label" style="margin-left:auto">VWAP $${d.vwap.toFixed(2)}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── INIT ─────────────────────────────────────────────────

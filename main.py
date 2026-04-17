@@ -106,6 +106,9 @@ def main():
         executor.pause()
         logger.info("Auto-trade DESACTIVADO. Use --auto-trade para activar.")
 
+    # Último snapshot de indicadores por símbolo (para el dashboard)
+    last_snaps: dict = {}
+
     # ── Callback: nueva barra de datos ──────────────────────────────────────
     def on_bar(symbol: str, bar) -> None:
         buf = buffer_registry.get_or_create(symbol)
@@ -116,6 +119,35 @@ def main():
 
         # Calcular indicadores
         snap = indicator_calculator.compute(df)
+
+        # Guardar snapshot para el dashboard de mercado
+        try:
+            ts = df.index[-1]
+            last_snaps[symbol] = {
+                "close":        round(snap.close, 2),
+                "volume":       int(snap.volume),
+                "vwap":         round(snap.vwap, 2),
+                "rsi":          round(snap.rsi, 1),
+                "macd":         round(snap.macd, 4),
+                "macd_signal":  round(snap.macd_signal, 4),
+                "macd_hist":    round(snap.macd_hist, 4),
+                "bb_upper":     round(snap.bb_upper, 2),
+                "bb_middle":    round(snap.bb_middle, 2),
+                "bb_lower":     round(snap.bb_lower, 2),
+                "bb_pct":       round(snap.bb_pct, 3),
+                "atr":          round(snap.atr, 2),
+                "adx":          round(snap.adx, 1),
+                "ema_fast":     round(snap.ema_fast, 2),
+                "ema_slow":     round(snap.ema_slow, 2),
+                "sma_200":      round(snap.sma_200, 2),
+                "volume_ratio": round(snap.volume_ratio, 2),
+                "stoch_k":      round(snap.stoch_k, 1),
+                "stoch_d":      round(snap.stoch_d, 1),
+                "bars":         len(df),
+                "updated_at":   ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+            }
+        except Exception:
+            pass
 
         # Actualizar precio en portfolio
         portfolio_tracker.update_price(symbol, snap.close)
@@ -255,6 +287,7 @@ def main():
                     except Exception:
                         pass
 
+                state_data["market"] = last_snaps
                 _state_file.write_text(json.dumps(state_data))
             except Exception:
                 pass
