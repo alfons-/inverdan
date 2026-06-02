@@ -56,7 +56,7 @@ class SignalAggregator:
             )
 
         # Capa 1: Reglas técnicas
-        rule_signal, rule_reasons = rule_based_signal(snap)
+        rule_signal, rule_reasons, rule_strength = rule_based_signal(snap)
 
         # Capa 2: Random Forest
         feature_vec = build_feature_vector(snap, timestamp)
@@ -65,7 +65,7 @@ class SignalAggregator:
         # Agregación: requiere acuerdo entre capas
         threshold = self._cfg.ml.confidence_threshold
         final_action, final_conf, extra_reasons = self._aggregate(
-            rule_signal, ml_action, ml_conf, threshold
+            rule_signal, rule_strength, ml_action, ml_conf, threshold
         )
 
         all_reasons = rule_reasons + extra_reasons
@@ -100,8 +100,20 @@ class SignalAggregator:
         return signal
 
     @staticmethod
+    def _rule_confidence(strength: int) -> float:
+        """
+        Mapea la fuerza de la señal (puntos de la dirección dominante, mínimo 4
+        para disparar) a una confianza graduada en [0.55, 0.90]. Sustituye el
+        antiguo valor fijo de 0.60 para que el umbral min_signal_confidence pueda
+        distinguir señales fuertes de marginales.
+        """
+        return round(min(0.5 + 0.05 * (strength - 3), 0.90), 2)
+
+    @classmethod
     def _aggregate(
+        cls,
         rule: str,
+        rule_strength: int,
         ml: str,
         ml_conf: float,
         threshold: float,
@@ -109,17 +121,18 @@ class SignalAggregator:
         reasons = []
 
         ml_active = ml != "HOLD" and ml_conf >= threshold
+        rule_conf = cls._rule_confidence(rule_strength)
 
         # Si ML no tiene modelo (confianza = 0), confiar solo en reglas
         if ml_conf == 0.0:
             if rule != "HOLD":
-                reasons.append(f"Solo reglas técnicas (sin modelo ML)")
-                return rule, 0.6, reasons
+                reasons.append("Solo reglas técnicas (sin modelo ML)")
+                return rule, rule_conf, reasons
             return "HOLD", 0.0, []
 
-        # Acuerdo total: máxima confianza
+        # Acuerdo total: combina fuerza de reglas y confianza ML
         if rule == ml and ml_active:
-            combined = 0.5 + ml_conf * 0.5
+            combined = max(0.5 + ml_conf * 0.5, rule_conf)
             reasons.append(f"Reglas y ML de acuerdo ({ml})")
             return ml, combined, reasons
 
@@ -131,7 +144,7 @@ class SignalAggregator:
         # Reglas activas pero ML en HOLD o baja confianza
         if rule != "HOLD" and (ml == "HOLD" or ml_conf < threshold):
             reasons.append(f"Reglas técnicas {rule}, ML indeciso")
-            return rule, 0.6, reasons
+            return rule, rule_conf, reasons
 
         # Señales contradictorias → no operar
         if rule != "HOLD" and ml != "HOLD" and rule != ml:

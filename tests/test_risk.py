@@ -94,3 +94,28 @@ class TestRiskManager:
         self.rm.reset_daily()
         assert self.rm._daily_pnl == 0.0
         assert not self.rm.circuit_open
+
+    # ── P&L de cierres (regresión del bug de contabilidad de cortos) ──────────
+    def test_long_close_pnl(self):
+        assert self.rm.record_fill("NVDA", "buy", 200.0, 5) is None   # abrir largo
+        pnl = self.rm.record_fill("NVDA", "sell", 210.0, 5)            # cerrar
+        assert pnl == 50.0   # (210-200)*5
+
+    def test_short_close_pnl(self):
+        # Abrir corto es un SELL; cerrarlo es un BUY. Antes esto daba 0/None.
+        assert self.rm.record_fill("TSLA", "sell", 400.0, 10) is None
+        pnl = self.rm.record_fill("TSLA", "buy", 390.0, 10)
+        assert pnl == 100.0   # (400-390)*10, beneficio en un corto
+
+    def test_short_loss_pnl(self):
+        self.rm.record_fill("MSFT", "sell", 445.0, 8)
+        pnl = self.rm.record_fill("MSFT", "buy", 465.0, 8)
+        assert pnl == -160.0  # (445-465)*8, pérdida en un corto
+
+    def test_partial_close_fills(self):
+        # Fills parciales (caso real MSFT 5+3) deben sumar el P&L total
+        self.rm.record_fill("MSFT", "sell", 445.0, 8)
+        p1 = self.rm.record_fill("MSFT", "buy", 465.0, 5)
+        p2 = self.rm.record_fill("MSFT", "buy", 465.0, 3)
+        assert round(p1 + p2, 2) == -160.0
+        assert not self.rm.has_open_position("MSFT")  # cerrada del todo

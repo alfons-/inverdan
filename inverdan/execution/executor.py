@@ -64,8 +64,10 @@ class TradeExecutor:
             logger.warning(f"Rate limit alcanzado, descartando señal {signal.symbol}")
             return
 
-        # Obtener valor del portfolio
-        portfolio_value = self._broker.get_portfolio_value()
+        # Obtener valor del portfolio y buying power en una sola llamada
+        account = self._broker.get_account()
+        portfolio_value = float(account.equity)
+        buying_power = float(account.buying_power)
         if portfolio_value <= 0:
             return
 
@@ -76,9 +78,9 @@ class TradeExecutor:
             self._bus.post(OrderRejectedEvent(symbol=signal.symbol, reason=reason))
             return
 
-        # Calcular tamaño de posición
+        # Calcular tamaño de posición respetando el buying power real
         atr = signal.indicators.get("atr", signal.price * 0.01)
-        qty = self._risk.size_position(signal, portfolio_value, atr)
+        qty = self._risk.size_position(signal, portfolio_value, atr, buying_power=buying_power)
         if qty <= 0:
             self._bus.post(OrderRejectedEvent(symbol=signal.symbol, reason="Tamaño de posición = 0"))
             return
@@ -114,7 +116,7 @@ class TradeExecutor:
 
         if order:
             fill_price = signal.price  # Aproximación (orden de mercado)
-            self._risk.record_fill(signal.symbol, side, fill_price, qty)
+            pnl = self._risk.record_fill(signal.symbol, side, fill_price, qty)
 
             pos = Position(
                 symbol=signal.symbol,
@@ -138,13 +140,14 @@ class TradeExecutor:
             )
             self._bus.post(filled_event)
 
-            # Audit trail
+            # Audit trail (pnl es None en aperturas, valor real en cierres)
             self._trade_logger.log_trade({
                 **signal.to_dict(),
                 "qty": qty,
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
                 "order_id": str(order.id),
+                "pnl": pnl,
             })
         else:
             self._bus.post(OrderRejectedEvent(symbol=signal.symbol, reason="Orden rechazada por broker"))

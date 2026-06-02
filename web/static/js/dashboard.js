@@ -38,6 +38,21 @@ function pnlHtml(v) {
   return `<span class="${colorClass(v)}">${fmt.usd(v)}</span>`;
 }
 
+/** Igual que fetch + JSON, pero si el cuerpo no es JSON muestra causa real (evita «conexión» al reiniciar u otros 500/HTML). */
+async function fetchJson(url, options) {
+  const r = await fetch(url, options);
+  const text = await r.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const err = new Error('invalid_json');
+    err.status = r.status;
+    err.bodyPreview = text.slice(0, 180);
+    throw err;
+  }
+}
+
 // ── TOAST ───────────────────────────────────────────────
 function toast(msg, type = 'info', duration = 3500) {
   const icons = { success: '✓', error: '✗', info: 'ℹ', warning: '⚠' };
@@ -568,7 +583,7 @@ function renderConfig(cfg) {
   ];
 
   grid.innerHTML = sections.map(sec => {
-    const src = sec.key === 'alpaca' ? cfg : (cfg[sec.key] || {});
+    const src = sec.key === 'alpaca' ? (cfg.alpaca || {}) : (cfg[sec.key] || {});
     const fields = sec.fields.map(f => {
       const val = src[f.key] ?? '';
       let input;
@@ -598,23 +613,27 @@ async function saveConfig() {
     const key = el.dataset.key;
     let val = el.type === 'checkbox' ? el.checked : (el.tagName === 'SELECT' ? el.value : Number(el.value));
     if (sec === 'alpaca') {
-      updated[key] = val;
+      if (!updated.alpaca) updated.alpaca = {};
+      updated.alpaca[key] = val;
     } else {
       if (!updated[sec]) updated[sec] = {};
       updated[sec][key] = val;
     }
   });
   try {
-    const r = await fetch('/api/config', {
+    const data = await fetchJson('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     });
-    const data = await r.json();
     if (data.ok) toast(data.message, 'success');
     else toast('Error: ' + data.error, 'error');
   } catch (e) {
-    toast('Error de conexión', 'error');
+    if (e.message === 'invalid_json') {
+      toast(`Respuesta inválida (HTTP ${e.status}). ${e.bodyPreview}`, 'error');
+    } else {
+      toast('Error de conexión', 'error');
+    }
   }
 }
 
@@ -625,38 +644,44 @@ async function controlBot(action) {
   const msgs   = {
     start: '¿Iniciar el bot de trading?',
     stop: '¿Detener el bot? Las órdenes abiertas en Alpaca permanecerán activas.',
-    restart: '¿Reiniciar el bot? El sistema se detendrá y volverá a arrancar.',
+    restart: '¿Reiniciar el bot? El proceso tardará ~30s para que Alpaca libere la conexión WebSocket.',
   };
 
   confirm(labels[action] + ' Bot', msgs[action], async () => {
     try {
-      const r = await fetch('/api/control', {
+      const data = await fetchJson('/api/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, auto_trade: state.autoTrade }),
       });
-      const data = await r.json();
       toast(data.message || data.error, data.ok ? 'success' : 'error');
       setTimeout(fetchStatus, 1500);
-    } catch {
-      toast('Error de conexión con el servidor', 'error');
+    } catch (e) {
+      if (e.message === 'invalid_json') {
+        toast(`Respuesta inesperada (HTTP ${e.status}). Si el bot se reinició, ignora este aviso o revisa la pestaña Red.`, 'error');
+      } else {
+        toast('Error de conexión con el servidor', 'error');
+      }
     }
   }, types[action]);
 }
 
 async function toggleAutoTrade() {
   try {
-    const r = await fetch('/api/control', {
+    const data = await fetchJson('/api/control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'toggle_auto_trade' }),
     });
-    const data = await r.json();
     toast(data.message, data.ok ? 'info' : 'error');
     state.autoTrade = data.auto_trade;
     setTimeout(fetchStatus, 500);
-  } catch {
-    toast('Error de conexión', 'error');
+  } catch (e) {
+    if (e.message === 'invalid_json') {
+      toast(`Respuesta inválida (HTTP ${e.status}).`, 'error');
+    } else {
+      toast('Error de conexión', 'error');
+    }
   }
 }
 
@@ -701,16 +726,19 @@ function emergencyStop() {
     'Se detendrá el bot inmediatamente. Las órdenes bracket en Alpaca permanecerán activas (stop-loss y take-profit siguen funcionando server-side). Deberás gestionar manualmente las posiciones abiertas desde Alpaca.',
     async () => {
       try {
-        const r = await fetch('/api/control', {
+        const data = await fetchJson('/api/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'emergency_stop' }),
         });
-        const data = await r.json();
         toast(data.message, data.ok ? 'warning' : 'error');
         setTimeout(fetchStatus, 1500);
-      } catch {
-        toast('Error de conexión', 'error');
+      } catch (e) {
+        if (e.message === 'invalid_json') {
+          toast(`Respuesta inválida (HTTP ${e.status}).`, 'error');
+        } else {
+          toast('Error de conexión', 'error');
+        }
       }
     }
   );
@@ -754,7 +782,7 @@ function renderMarket(market) {
     return t > a ? t : a;
   }, '');
   const upd = document.getElementById('marketLastUpdate');
-  if (upd && latest) upd.textContent = new Date(latest + 'Z').toLocaleTimeString('es-ES');
+  if (upd && latest) upd.textContent = new Date(latest).toLocaleTimeString('es-ES');
 
   grid.innerHTML = symbols.map(sym => {
     const d = market[sym];
@@ -766,7 +794,7 @@ function renderMarket(market) {
     const emaCross = d.ema_fast > d.ema_slow ? '▲ Alcista' : d.ema_fast < d.ema_slow ? '▼ Bajista' : '= Lateral';
     const emaCrossCls = d.ema_fast > d.ema_slow ? 'ind-green' : d.ema_fast < d.ema_slow ? 'ind-red' : 'ind-neutral';
     const bbPctBar = Math.min(100, Math.max(0, d.bb_pct * 100)).toFixed(0);
-    const ts = d.updated_at ? new Date(d.updated_at + 'Z').toLocaleTimeString('es-ES') : '—';
+    const ts = d.updated_at ? new Date(d.updated_at).toLocaleTimeString('es-ES') : '—';
 
     return `<div class="mkt-card">
       <div class="mkt-card-header">

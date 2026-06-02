@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import platform
 import signal
 import subprocess
 import sys
+import threading
 import time
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +27,7 @@ import psutil
 import yaml
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 
 # ── Rutas base ────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
@@ -35,9 +39,64 @@ SIGNALS_LOG  = ROOT / "logs" / "signals.log"
 TRADES_LOG   = ROOT / "logs" / "trades.log"
 SYSTEM_LOG   = ROOT / "logs" / "system.log"
 PID_FILE     = ROOT / "bot.pid"
+_MAIN_PY = (ROOT / "main.py").resolve()
+
+
+def _cmdline_is_dashboard_bot(cmdline: list[str] | None) -> bool:
+    """True si el proceso es main.py --no-dashboard de esta instalación (ruta canónica)."""
+    if not cmdline:
+        return False
+    if "--no-dashboard" not in cmdline:
+        return False
+    for arg in cmdline:
+        try:
+            if Path(arg).resolve() == _MAIN_PY:
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 CORS(app)
+
+# Logger dedicado del dashboard web (errores que el front-end no puede ver)
+_web_log_dir = ROOT / "logs"
+_web_log_dir.mkdir(exist_ok=True)
+_web_logger = logging.getLogger("inverdan.web")
+if not _web_logger.handlers:
+    _h = logging.FileHandler(_web_log_dir / "web.log")
+    _h.setFormatter(logging.Formatter(
+        "[%(asctime)s] %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    _web_logger.addHandler(_h)
+    _web_logger.setLevel(logging.INFO)
+
+
+# ── Manejadores globales de error ────────────────────────────────────────────
+# Garantizan que cualquier endpoint /api/* devuelva JSON aunque algo reviente.
+@app.errorhandler(Exception)
+def _handle_any_exception(e):
+    if isinstance(e, HTTPException):
+        # Errores HTTP estándar (404, 405, 400 mal-formed JSON, etc.)
+        if request.path.startswith("/api/"):
+            return jsonify({
+                "ok": False,
+                "error": e.description,
+                "code": e.code,
+            }), e.code
+        return e
+
+    tb = traceback.format_exc()
+    _web_logger.error(f"Excepción no controlada en {request.method} {request.path}\n{tb}")
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+        }), 500
+    # Para rutas no-API dejamos que Flask muestre la página por defecto
+    return ("Internal Server Error", 500)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -91,17 +150,28 @@ def get_bot_pid() -> int | None:
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text().strip())
-            if psutil.pid_exists(pid):
+            if not psutil.pid_exists(pid):
+                PID_FILE.unlink(missing_ok=True)
+            else:
                 p = psutil.Process(pid)
-                if p.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD):
-                    return pid
+                if p.status() in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD):
+                    PID_FILE.unlink(missing_ok=True)
+                else:
+                    try:
+                        args = p.cmdline()
+                    except Exception:
+                        args = []
+                    if _cmdline_is_dashboard_bot(args):
+                        return pid
+                    # PID reutilizado por otro programa o bot.pid obsoleto
+                    PID_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-    # Buscar por nombre de proceso
+    # Buscar por línea de comandos (no usar subcadena "inverdan": la ruta puede no contenerla)
     for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            cmdline = " ".join(proc.info["cmdline"] or [])
-            if "main.py" in cmdline and "inverdan" in cmdline:
+            cmdline_list = proc.info["cmdline"] or []
+            if _cmdline_is_dashboard_bot(cmdline_list):
                 return proc.info["pid"]
         except Exception:
             continue
@@ -115,7 +185,8 @@ def get_bot_status() -> dict:
     try:
         proc = psutil.Process(pid)
         with proc.oneshot():
-            cpu = proc.cpu_percent(interval=0.1)
+            # interval=0 evita bloqueo y reduce fallos esporádicos en macOS
+            cpu = proc.cpu_percent(interval=0)
             mem = proc.memory_info().rss / 1024 / 1024
             create_time = proc.create_time()
             uptime_s = int(time.time() - create_time)
@@ -123,7 +194,8 @@ def get_bot_status() -> dict:
         return {"running": True, "pid": pid, "cpu": round(cpu, 1),
                 "memory_mb": round(mem, 1), "uptime": uptime}
     except Exception:
-        return {"running": False, "pid": None, "cpu": 0, "memory_mb": 0, "uptime": None}
+        # get_bot_pid() ya validó el proceso; aquí solo fallaron métricas (permisos, race, etc.)
+        return {"running": True, "pid": pid, "cpu": 0, "memory_mb": 0, "uptime": None}
 
 
 def get_system_metrics() -> dict:
@@ -144,7 +216,12 @@ def get_system_metrics() -> dict:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    resp = render_template("index.html")
+    from flask import make_response
+    r = make_response(resp)
+    r.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    return r
 
 
 @app.route("/api/status")
@@ -184,21 +261,21 @@ def api_trades():
     limit = int(request.args.get("limit", 100))
     trades = read_jsonl(TRADES_LOG, limit)
 
-    # Calcular estadísticas
-    if trades:
-        wins   = sum(1 for t in trades if t.get("pnl", 0) > 0)
-        losses = sum(1 for t in trades if t.get("pnl", 0) < 0)
-        total_pnl = sum(t.get("pnl", 0) for t in trades)
-        win_rate = wins / len(trades) * 100 if trades else 0
-    else:
-        wins = losses = 0
-        total_pnl = 0
-        win_rate = 0
+    # Estadísticas solo sobre operaciones CERRADAS (cierres reales SL/TP, que
+    # llevan "close_reason"). Las aperturas registran "pnl": null o 0.0 y no
+    # representan un resultado; incluirlas distorsiona el win-rate y rompe la
+    # comparación None > int. Win-rate estándar = ganadoras / (ganadoras+perdedoras).
+    closed = [t for t in trades if t.get("close_reason")]
+    wins   = sum(1 for t in closed if (t.get("pnl") or 0) > 0)
+    losses = sum(1 for t in closed if (t.get("pnl") or 0) < 0)
+    decided = wins + losses
+    total_pnl = sum((t.get("pnl") or 0) for t in closed)
+    win_rate = wins / decided * 100 if decided else 0
 
     return jsonify({
         "trades": trades,
         "stats": {
-            "total": len(trades),
+            "total": len(closed),
             "wins": wins,
             "losses": losses,
             "win_rate": round(win_rate, 1),
@@ -273,33 +350,67 @@ def api_config_post():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _spawn_bot(auto_trade: bool) -> dict:
+    """Lanza main.py --no-dashboard como subproceso y devuelve el resultado."""
+    from dotenv import dotenv_values
+    logs_dir = ROOT / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    log_path = logs_dir / "bot_stdout.log"
+
+    cmd = [sys.executable, str(ROOT / "main.py"), "--no-dashboard"]
+    if auto_trade:
+        cmd.append("--auto-trade")
+
+    # Construir entorno explícito: hereda el actual y fuerza los valores del .env,
+    # evitando que variables vacías o incorrectas del proceso Flask se propaguen.
+    env = os.environ.copy()
+    env.update(dotenv_values(ROOT / ".env"))
+
+    log_fh = open(log_path, "a")
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(ROOT),
+            env=env,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except Exception:
+        log_fh.close()
+        raise
+
+    # NO escribir bot.pid aquí — main.py lo escribe él mismo al arrancar.
+    # Si Flask escribiera el PID antes de que main.py lo lea, main.py vería su
+    # propio PID en bot.pid y abortaría pensando que ya hay una instancia activa.
+    _web_logger.info(f"Bot lanzado: PID={proc.pid} cmd={cmd}")
+    return {"ok": True, "message": f"Bot iniciado (PID {proc.pid})"}
+
+
 @app.route("/api/control", methods=["POST"])
 def api_control():
     """Controla el bot: start, stop, restart, toggle_auto_trade, emergency_stop."""
-    data = request.get_json() or {}
+    try:
+        data = request.get_json(silent=True) or {}
+    except Exception:
+        data = {}
     action = data.get("action", "")
 
-    pid = get_bot_pid()
+    try:
+        pid = get_bot_pid()
+    except Exception as e:
+        _web_logger.error(f"get_bot_pid falló: {e}\n{traceback.format_exc()}")
+        # Ante fallo de inspección de procesos asumimos que no hay bot activo
+        pid = None
 
     if action == "start":
         if pid:
             return jsonify({"ok": False, "message": "El bot ya está corriendo."})
-        auto = "--auto-trade" if data.get("auto_trade") else ""
-        cmd = [sys.executable, str(ROOT / "main.py"), "--no-dashboard"]
-        if auto:
-            cmd.append(auto)
         try:
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(ROOT),
-                stdout=open(ROOT / "logs" / "bot_stdout.log", "a"),
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-            PID_FILE.write_text(str(proc.pid))
-            return jsonify({"ok": True, "message": f"Bot iniciado (PID {proc.pid})"})
+            return jsonify(_spawn_bot(bool(data.get("auto_trade"))))
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            _web_logger.error(f"start falló: {e}\n{traceback.format_exc()}")
+            return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
     elif action == "stop":
         if not pid:
@@ -315,33 +426,31 @@ def api_control():
             return jsonify({"ok": False, "error": str(e)}), 500
 
     elif action == "restart":
-        # Stop
-        if pid:
+        auto_trade = bool(data.get("auto_trade"))
+
+        def _do_restart(old_pid):
+            if old_pid:
+                try:
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(5)
+                    if psutil.pid_exists(old_pid):
+                        os.kill(old_pid, signal.SIGKILL)
+                except Exception:
+                    pass
+            PID_FILE.unlink(missing_ok=True)
+            # Esperar a que Alpaca libere la conexión WebSocket
+            time.sleep(30)
+            # No lanzar si ya hay un bot corriendo (evita conflictos con threads paralelos)
+            if get_bot_pid():
+                _web_logger.info("restart (bg): ya hay un bot corriendo, omitiendo spawn.")
+                return
             try:
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(3)
-                if psutil.pid_exists(pid):
-                    os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
-        PID_FILE.unlink(missing_ok=True)
-        time.sleep(1)
-        # Start
-        cmd = [sys.executable, str(ROOT / "main.py"), "--no-dashboard"]
-        if data.get("auto_trade"):
-            cmd.append("--auto-trade")
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(ROOT),
-                stdout=open(ROOT / "logs" / "bot_stdout.log", "a"),
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-            PID_FILE.write_text(str(proc.pid))
-            return jsonify({"ok": True, "message": f"Bot reiniciado (PID {proc.pid})"})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+                _spawn_bot(auto_trade)
+            except Exception as e:
+                _web_logger.error(f"restart (bg) falló: {e}\n{traceback.format_exc()}")
+
+        threading.Thread(target=_do_restart, args=(pid,), daemon=True, name="bot-restart").start()
+        return jsonify({"ok": True, "message": "Reiniciando bot en ~30s (Alpaca necesita liberar la conexión WebSocket)…"})
 
     elif action == "emergency_stop":
         """Cierra posiciones + detiene el bot."""
@@ -382,7 +491,7 @@ def api_pnl_history():
     history = []
     cumulative = 0.0
     for t in reversed(trades):
-        pnl = t.get("pnl", 0)
+        pnl = t.get("pnl") or 0   # aperturas tienen pnl=null
         cumulative += pnl
         history.append({
             "ts": t.get("_ts", ""),

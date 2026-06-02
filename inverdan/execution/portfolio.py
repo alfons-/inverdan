@@ -59,25 +59,62 @@ class PortfolioTracker:
         self._lock = threading.RLock()
 
     def sync_from_broker(self, broker) -> None:
-        """Sincroniza con el estado real de Alpaca."""
+        """
+        Sincroniza con el estado real de Alpaca.
+
+        Conserva los stop_loss/take_profit conocidos localmente y, cuando estén
+        disponibles, los rellena desde las órdenes bracket abiertas.
+        """
         try:
             account = broker.get_account()
             positions = broker.get_positions()
+
+            broker_symbols = [getattr(p, "symbol", None) for p in positions]
+            broker_symbols = [s for s in broker_symbols if s]
+
+            # Intento de obtener SL/TP desde brackets activos. Si el broker
+            # no expone el helper (tests / mocks) seguimos sin esa información.
+            try:
+                bracket_stops = broker.get_bracket_stops(broker_symbols)
+            except AttributeError:
+                bracket_stops = {}
+            except Exception:
+                bracket_stops = {}
 
             with self._lock:
                 self._equity = float(account.equity)
                 self._buying_power = float(account.buying_power)
 
+                # Snapshot de stops previos para no perderlos al refrescar
+                prev_stops: Dict[str, tuple] = {
+                    sym: (p.stop_loss, p.take_profit)
+                    for sym, p in self._positions.items()
+                }
+
                 self._positions.clear()
                 for pos in positions:
+                    qty_raw = float(pos.qty)
+                    side = "long" if qty_raw > 0 else "short"
+                    sym = pos.symbol
+
+                    sl_prev, tp_prev = prev_stops.get(sym, (0.0, 0.0))
+                    sl_broker = bracket_stops.get(sym, {}).get("stop_loss", 0.0) or 0.0
+                    tp_broker = bracket_stops.get(sym, {}).get("take_profit", 0.0) or 0.0
+
+                    # Preferimos lo que ya conocemos localmente; si no, lo del broker
+                    stop_loss = sl_prev or sl_broker
+                    take_profit = tp_prev or tp_broker
+
                     p = Position(
-                        symbol=pos.symbol,
-                        side="long" if float(pos.qty) > 0 else "short",
-                        qty=abs(int(float(pos.qty))),
+                        symbol=sym,
+                        side=side,
+                        qty=abs(int(qty_raw)),
                         entry_price=float(pos.avg_entry_price),
                         current_price=float(pos.current_price),
+                        stop_loss=float(stop_loss),
+                        take_profit=float(take_profit),
                     )
-                    self._positions[pos.symbol] = p
+                    self._positions[sym] = p
         except Exception:
             pass
 

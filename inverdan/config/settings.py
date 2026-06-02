@@ -10,9 +10,8 @@ from alpaca.data.enums import DataFeed
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 
-load_dotenv()
-
 _ROOT = Path(__file__).resolve().parent.parent.parent
+load_dotenv(_ROOT / ".env")
 
 
 class AlpacaSettings(BaseModel):
@@ -67,6 +66,13 @@ class RiskSettings(BaseModel):
     min_daily_volume: int = 500_000
 
 
+class PushoverSettings(BaseModel):
+    enabled: bool = False
+    api_token: str = Field(default_factory=lambda: os.environ.get("PUSHOVER_API_TOKEN", ""))
+    user_key: str = Field(default_factory=lambda: os.environ.get("PUSHOVER_USER_KEY", ""))
+    min_signal_confidence: float = Field(0.0, ge=0.0, le=1.0)
+
+
 class DashboardSettings(BaseModel):
     refresh_rate: float = 1.0
     max_log_lines: int = 50
@@ -78,6 +84,9 @@ class TrainingSettings(BaseModel):
     forward_return_periods: int = 5
     buy_threshold: float = 0.005
     sell_threshold: float = -0.005
+    # Etiquetado por cuantiles: fracción de cola por clase. 0.33 → tercio
+    # inferior=SELL, tercio superior=BUY, resto=HOLD (clases equilibradas).
+    label_quantile: float = Field(0.33, gt=0.0, le=0.5)
     test_split: float = 0.2
     n_estimators: int = 200
     max_depth: int = 10
@@ -94,6 +103,7 @@ class Settings(BaseModel):
     risk: RiskSettings = RiskSettings()
     dashboard: DashboardSettings = DashboardSettings()
     training: TrainingSettings = TrainingSettings()
+    pushover: PushoverSettings = PushoverSettings()
 
     @property
     def root_path(self) -> Path:

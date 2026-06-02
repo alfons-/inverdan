@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import sys
 import threading
@@ -35,10 +36,12 @@ from inverdan.execution.broker import AlpacaBroker
 from inverdan.execution.risk import RiskManager
 from inverdan.execution.portfolio import PortfolioTracker
 from inverdan.execution.executor import TradeExecutor
+from inverdan.execution.trade_stream import AlpacaTradeStream
 from inverdan.dashboard.renderer import DashboardRenderer
 from inverdan.dashboard.state import DashboardState
-from inverdan.utils.logger import setup_logger, get_logger
+from inverdan.utils.logger import setup_logger, get_logger, TradeLogger
 from inverdan.utils.market_hours import is_market_open
+from inverdan.utils.pushover import PushoverNotifier
 
 
 def parse_args():
@@ -62,6 +65,28 @@ def main():
     setup_logger(settings.logs_path)
     logger = get_logger("main")
 
+    # Evitar instancias múltiples: comprobar si ya hay un proceso corriendo
+    pid_file = Path(__file__).parent / "bot.pid"
+    if pid_file.exists():
+        try:
+            existing_pid = int(pid_file.read_text().strip())
+            import psutil
+            if psutil.pid_exists(existing_pid):
+                proc = psutil.Process(existing_pid)
+                cmdline = " ".join(proc.cmdline())
+                is_bot = "main.py" in cmdline and proc.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+                if is_bot:
+                    logger.error(f"Ya hay una instancia corriendo (PID {existing_pid}). Saliendo.")
+                    sys.exit(1)
+        except Exception:
+            pass
+        # PID obsoleto — limpiar
+        pid_file.unlink(missing_ok=True)
+    pid_file.write_text(str(os.getpid()))
+    # Registrar limpieza inmediatamente para que funcione aunque el bot crashee
+    import atexit
+    atexit.register(lambda: pid_file.unlink(missing_ok=True))
+
     logger.info("=" * 60)
     logger.info("INVERDAN iniciando...")
     logger.info(f"Símbolos: {settings.symbols}")
@@ -80,7 +105,27 @@ def main():
     broker = AlpacaBroker(settings)
     risk_manager = RiskManager(settings)
     portfolio_tracker = PortfolioTracker()
+
+    # Sincronizar primero el portfolio (rellena posiciones, equity, stops)
     portfolio_tracker.sync_from_broker(broker)
+
+    # Y a continuación el RiskManager para que conozca las posiciones existentes:
+    # sin esto, _open_positions y _total_exposure arrancan vacíos y se podrían
+    # duplicar BUYs sobre símbolos ya en cartera o saltarse el límite de exposición.
+    risk_manager.sync_from_broker(broker)
+
+    initial_snap = portfolio_tracker.get_snapshot()
+    if initial_snap.positions:
+        logger.info(
+            f"Portfolio inicial: {len(initial_snap.positions)} posiciones abiertas, "
+            f"equity=${initial_snap.equity:,.2f}, "
+            f"unrealized_pnl=${initial_snap.total_unrealized_pnl:+,.2f}"
+        )
+        for p in initial_snap.positions:
+            logger.info(
+                f"  - {p.symbol} {p.side.upper()} {p.qty}@${p.entry_price:.2f} "
+                f"SL=${p.stop_loss:.2f} TP=${p.take_profit:.2f}"
+            )
 
     # Modelos ML
     model_registry = ModelRegistry(settings.models_path)
@@ -105,6 +150,18 @@ def main():
     if not args.auto_trade:
         executor.pause()
         logger.info("Auto-trade DESACTIVADO. Use --auto-trade para activar.")
+
+    # Logger de trades y señales
+    trade_logger = TradeLogger(settings.logs_path)
+
+    # Stream de trade updates (registra PnL de cierres automáticos SL/TP)
+    trade_stream = AlpacaTradeStream(
+        settings,
+        risk_manager,
+        trade_logger,
+        portfolio_tracker,
+        event_bus,
+    )
 
     # Último snapshot de indicadores por símbolo (para el dashboard)
     last_snaps: dict = {}
@@ -161,6 +218,7 @@ def main():
 
         # Solo publicar al bus si no es HOLD (para el executor)
         if signal.action != "HOLD":
+            trade_logger.log_signal(signal.to_dict())
             event_bus.post(SignalEvent(
                 symbol=signal.symbol,
                 action=signal.action,
@@ -170,6 +228,16 @@ def main():
                 timestamp=signal.timestamp,
                 indicators=signal.indicators,
             ))
+
+    # ── Pushover ─────────────────────────────────────────────────────────────
+    if settings.pushover.enabled:
+        PushoverNotifier(
+            api_token=settings.pushover.api_token,
+            user_key=settings.pushover.user_key,
+            event_bus=event_bus,
+            min_signal_confidence=settings.pushover.min_signal_confidence,
+        )
+        logger.info("Notificaciones Pushover activadas.")
 
     # ── Suscriptores del bus ─────────────────────────────────────────────────
     def on_order_filled(event: OrderFilledEvent):
@@ -209,6 +277,7 @@ def main():
             logger.warning(f"No se pudo cargar histórico para {sym}: {e}")
 
     stream.start()
+    trade_stream.start()
 
     # ── Bus de eventos (hilo dedicado) ───────────────────────────────────────
     bus_thread = threading.Thread(target=event_bus.dispatch_loop, daemon=True, name="event-bus")
@@ -220,6 +289,7 @@ def main():
             time.sleep(30)
             try:
                 portfolio_tracker.sync_from_broker(broker)
+                risk_manager.sync_from_broker(broker)   # mantiene _open_positions alineado con Alpaca
                 snap = portfolio_tracker.get_snapshot()
                 dash_state.update_portfolio(snap)
             except Exception:
@@ -227,6 +297,76 @@ def main():
 
     sync_thread = threading.Thread(target=portfolio_sync_loop, daemon=True, name="portfolio-sync")
     sync_thread.start()
+
+    # ── Protector de posiciones sin stop-loss ────────────────────────────────
+    def _symbols_with_held_shares() -> set:
+        """Símbolos cuyas acciones ya están retenidas por alguna orden abierta.
+
+        Cualquier orden abierta (stop, take-profit limit, leg de bracket…) retiene
+        las acciones de la posición. Mientras exista, Alpaca rechaza colocar otro
+        stop con «insufficient qty / held_for_orders». Por eso, si hay CUALQUIER
+        orden para el símbolo, el protector no debe intentar añadir otra: hacerlo
+        solo genera errores en bucle (el bug que llenó el log de 657 ERROR).
+        """
+        held = set()
+        for o in broker.get_open_orders():
+            sym = getattr(o, "symbol", None)
+            if sym:
+                held.add(sym)
+            for leg in (getattr(o, "legs", None) or []):
+                leg_sym = getattr(leg, "symbol", None)
+                if leg_sym:
+                    held.add(leg_sym)
+        return held
+
+    def protect_positions_loop():
+        """
+        Garantiza que toda posición abierta tenga un stop-loss activo.
+
+        En cada iteración consulta las órdenes reales de Alpaca (no un estado
+        cacheado) para saber qué símbolos ya están protegidos, y coloca un
+        stop-market GTC solo en los que no lo estén:
+          - SHORT → stop en current_price * 1.015  (+1.5 %)
+          - LONG  → stop en current_price * 0.985  (-1.5 %)
+        """
+        time.sleep(15)   # Dejar al bot arrancar completamente
+
+        while True:
+            try:
+                snap = portfolio_tracker.get_snapshot()
+                if snap.positions:
+                    held = _symbols_with_held_shares()
+                    for pos in snap.positions:
+                        # Si las acciones ya están retenidas por cualquier orden
+                        # (stop o TP), no se puede ni se debe añadir otro stop.
+                        if pos.symbol in held:
+                            continue
+
+                        ref_price = pos.current_price or pos.entry_price
+                        if pos.side == "short":
+                            stop_price = round(ref_price * 1.015, 2)
+                            side = "buy"
+                        else:
+                            stop_price = round(ref_price * 0.985, 2)
+                            side = "sell"
+
+                        logger.warning(
+                            f"Posición {pos.symbol} ({pos.side} {pos.qty}) sin stop-loss. "
+                            f"Colocando stop @ ${stop_price:.2f}"
+                        )
+                        broker.submit_stop_order(
+                            symbol=pos.symbol,
+                            side=side,
+                            qty=pos.qty,
+                            stop_price=stop_price,
+                        )
+            except Exception as e:
+                logger.warning(f"protect_positions_loop error: {e}")
+
+            time.sleep(60)   # Revisar cada minuto
+
+    protect_thread = threading.Thread(target=protect_positions_loop, daemon=True, name="pos-protector")
+    protect_thread.start()
 
     # Sincronización inicial
     snap = portfolio_tracker.get_snapshot()
@@ -300,7 +440,9 @@ def main():
     def shutdown(sig, frame):
         logger.info("Apagando sistema...")
         stream.stop()
+        trade_stream.stop()
         event_bus.shutdown()
+        pid_file.unlink(missing_ok=True)
         logger.info("Sistema apagado correctamente.")
         sys.exit(0)
 

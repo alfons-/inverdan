@@ -4,29 +4,33 @@ from __future__ import annotations
 from ..indicators.calculator import IndicatorSnapshot
 
 
-def rule_based_signal(snap: IndicatorSnapshot) -> tuple[str, list[str]]:
+def rule_based_signal(snap: IndicatorSnapshot) -> tuple[str, list[str], int]:
     """
-    Aplica reglas técnicas clásicas y retorna (señal, razones).
+    Aplica reglas técnicas clásicas y retorna (señal, razones, fuerza).
     Señal: "BUY", "SELL" o "HOLD"
+    Fuerza: puntos de la dirección dominante (0 si HOLD). Permite al agregador
+    graduar la confianza en lugar de usar un valor fijo.
     """
     if not snap.valid:
-        return "HOLD", ["Indicadores no disponibles"]
+        return "HOLD", ["Indicadores no disponibles"], 0
 
     buy_points = 0
     sell_points = 0
     reasons = []
 
     # ---- RSI ----
+    # Umbrales menos agresivos: RSI 60 es normal en una subida, no una venta.
+    # El tier débil de venta sube a >65 y el de compra baja a <35 (simétrico).
     if snap.rsi < 30:
         buy_points += 2
         reasons.append(f"RSI sobrevendido ({snap.rsi:.1f})")
-    elif snap.rsi < 40:
+    elif snap.rsi < 35:
         buy_points += 1
         reasons.append(f"RSI bajo ({snap.rsi:.1f})")
     elif snap.rsi > 70:
         sell_points += 2
         reasons.append(f"RSI sobrecomprado ({snap.rsi:.1f})")
-    elif snap.rsi > 60:
+    elif snap.rsi > 65:
         sell_points += 1
         reasons.append(f"RSI alto ({snap.rsi:.1f})")
 
@@ -80,10 +84,24 @@ def rule_based_signal(snap: IndicatorSnapshot) -> tuple[str, list[str]]:
             sell_points += 1
             reasons.append(f"Volumen alto confirma bajada (x{snap.volume_ratio:.1f})")
 
-    # ---- Decisión final ----
+    # ---- Decisión preliminar ----
     if buy_points >= 4 and buy_points > sell_points + 1:
-        return "BUY", reasons
+        action, strength = "BUY", buy_points
     elif sell_points >= 4 and sell_points > buy_points + 1:
-        return "SELL", reasons
+        action, strength = "SELL", sell_points
     else:
-        return "HOLD", reasons
+        return "HOLD", reasons, 0
+
+    # ---- Filtro de tendencia mayor (ESTRICTO) ----
+    # No operar contra la SMA200: la estrategia es de reversión a la media y, sin
+    # este filtro, abría cortos en plena tendencia alcista (la causa del -24%).
+    #   precio > SMA200 → tendencia alcista → se vetan los cortos (SELL)
+    #   precio < SMA200 → tendencia bajista → se vetan los largos (BUY)
+    if action == "SELL" and snap.price_vs_sma200 > 0:
+        reasons.append("Veto: corto bloqueado en tendencia alcista (precio > SMA200)")
+        return "HOLD", reasons, 0
+    if action == "BUY" and snap.price_vs_sma200 < 0:
+        reasons.append("Veto: largo bloqueado en tendencia bajista (precio < SMA200)")
+        return "HOLD", reasons, 0
+
+    return action, reasons, strength

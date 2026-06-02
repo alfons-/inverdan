@@ -27,28 +27,38 @@ def make_snap(**kwargs) -> IndicatorSnapshot:
 class TestRuleBasedSignal:
     def test_oversold_rsi_buys(self):
         snap = make_snap(rsi=25.0, bb_pct=0.05, macd_hist=0.2, ema_crossover=0.003)
-        action, reasons = rule_based_signal(snap)
+        action, reasons, strength = rule_based_signal(snap)
         assert action == "BUY"
 
     def test_overbought_rsi_sells(self):
-        snap = make_snap(rsi=75.0, bb_pct=0.95, macd_hist=-0.2, ema_crossover=-0.003)
-        action, reasons = rule_based_signal(snap)
+        # price_vs_sma200 negativo: tendencia bajista, el filtro permite cortos
+        snap = make_snap(rsi=75.0, bb_pct=0.95, macd_hist=-0.2, ema_crossover=-0.003,
+                         price_vs_sma200=-0.07)
+        action, reasons, strength = rule_based_signal(snap)
         assert action == "SELL"
+
+    def test_short_vetoed_in_uptrend(self):
+        # Misma señal de venta pero en tendencia alcista (precio > SMA200): vetada
+        snap = make_snap(rsi=75.0, bb_pct=0.95, macd_hist=-0.2, ema_crossover=-0.003,
+                         price_vs_sma200=0.07)
+        action, reasons, strength = rule_based_signal(snap)
+        assert action == "HOLD"
+        assert any("Veto" in r for r in reasons)
 
     def test_neutral_holds(self):
         snap = make_snap(rsi=50.0)
-        action, _ = rule_based_signal(snap)
+        action, _, _ = rule_based_signal(snap)
         assert action == "HOLD"
 
     def test_invalid_snap_holds(self):
         snap = IndicatorSnapshot(valid=False)
-        action, _ = rule_based_signal(snap)
+        action, _, _ = rule_based_signal(snap)
         assert action == "HOLD"
 
     def test_volume_amplifies_buy(self):
         snap = make_snap(rsi=28.0, bb_pct=0.08, macd_hist=0.3, ema_crossover=0.004,
                          volume_ratio=2.0, price_vs_sma200=0.03)
-        action, reasons = rule_based_signal(snap)
+        action, reasons, strength = rule_based_signal(snap)
         assert action == "BUY"
         assert any("Volumen" in r for r in reasons)
 
@@ -67,15 +77,21 @@ class TestSignalAggregator:
         agg._cfg = settings
         agg._registry = registry
 
-        action, conf, reasons = SignalAggregator._aggregate("BUY", "SELL", 0.75, 0.65)
+        action, conf, reasons = SignalAggregator._aggregate("BUY", 5, "SELL", 0.75, 0.65)
         assert action == "HOLD"
 
     def test_agreement_increases_confidence(self):
-        action, conf, reasons = SignalAggregator._aggregate("BUY", "BUY", 0.80, 0.65)
+        action, conf, reasons = SignalAggregator._aggregate("BUY", 5, "BUY", 0.80, 0.65)
         assert action == "BUY"
         assert conf > 0.80
 
     def test_no_model_uses_rules(self):
-        action, conf, _ = SignalAggregator._aggregate("BUY", "HOLD", 0.0, 0.65)
+        action, conf, _ = SignalAggregator._aggregate("BUY", 5, "HOLD", 0.0, 0.65)
         assert action == "BUY"
         assert conf > 0.5
+
+    def test_strong_signal_higher_confidence(self):
+        # Una señal de 8 puntos debe dar más confianza que una de 4
+        _, weak, _ = SignalAggregator._aggregate("BUY", 4, "HOLD", 0.0, 0.65)
+        _, strong, _ = SignalAggregator._aggregate("BUY", 8, "HOLD", 0.0, 0.65)
+        assert strong > weak
