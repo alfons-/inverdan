@@ -27,6 +27,8 @@ const fmt = {
   pctPlain: v => v == null ? '—' : Number(v).toFixed(1) + '%',
   ts: s => s ? new Date(s).toLocaleTimeString('es-ES') : '—',
   tsDate: s => s ? new Date(s).toLocaleString('es-ES', {hour:'2-digit', minute:'2-digit', second:'2-digit', day:'2-digit', month:'2-digit'}) : '—',
+  // Etiqueta corta para el eje X del gráfico: día y mes (p. ej. "02/06")
+  tsAxis: s => s ? new Date(s).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'}) : '',
 };
 
 function colorClass(v) {
@@ -159,13 +161,24 @@ function initPnlChart() {
           titleColor: '#7b8299',
           bodyColor: '#e8eaf0',
           callbacks: {
+            // Día y hora completos al pasar el ratón
+            title: items => items.length ? fmt.tsDate(state.pnlTimestamps?.[items[0].dataIndex]) : '',
             label: ctx => ' PnL: $' + ctx.parsed.y.toFixed(2)
           }
         }
       },
       scales: {
         x: {
-          display: false,
+          display: true,
+          grid: { display: false },
+          ticks: {
+            color: '#7b8299',
+            font: { size: 10 },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6,
+          },
+          border: { display: false },
         },
         y: {
           grid: { color: '#1a1e28' },
@@ -188,7 +201,8 @@ async function fetchPnlChart() {
     const h = data.history || [];
     if (!h.length) return;
     const chart = state.pnlChart;
-    chart.data.labels = h.map(x => fmt.ts(x.ts));
+    state.pnlTimestamps = h.map(x => x.ts);          // para el tooltip (día + hora)
+    chart.data.labels = h.map(x => fmt.tsAxis(x.ts)); // eje X: fecha (día/mes)
     chart.data.datasets[0].data = h.map(x => x.cumulative);
     const total = h[h.length - 1]?.cumulative ?? 0;
     chart.data.datasets[0].borderColor = total >= 0 ? '#00c97a' : '#f04b5a';

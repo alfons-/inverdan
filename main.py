@@ -40,7 +40,7 @@ from inverdan.execution.trade_stream import AlpacaTradeStream
 from inverdan.dashboard.renderer import DashboardRenderer
 from inverdan.dashboard.state import DashboardState
 from inverdan.utils.logger import setup_logger, get_logger, TradeLogger
-from inverdan.utils.market_hours import is_market_open
+from inverdan.utils.market_hours import is_market_open, now_et
 from inverdan.utils.pushover import PushoverNotifier
 
 
@@ -367,6 +367,33 @@ def main():
 
     protect_thread = threading.Thread(target=protect_positions_loop, daemon=True, name="pos-protector")
     protect_thread.start()
+
+    # ── Reseteo diario de contadores al abrir el mercado ─────────────────────
+    def daily_reset_loop():
+        """
+        Pone a cero el «PnL del día», las pérdidas consecutivas y el circuit
+        breaker al comienzo de cada nueva jornada bursátil.
+
+        Sin esto, reset_daily() nunca se llamaba y el «PnL del día» en realidad
+        acumulaba desde el último arranque del bot (engañoso si corría varios
+        días seguidos). Se resetea cuando, en una fecha ET distinta a la última,
+        el mercado está abierto (es decir, justo al abrir).
+        """
+        last_reset_date = now_et().date()   # no resetear nada más arrancar
+        while True:
+            time.sleep(60)
+            try:
+                today = now_et().date()
+                if today != last_reset_date and is_market_open():
+                    risk_manager.reset_daily()
+                    portfolio_tracker.reset_daily()
+                    last_reset_date = today
+                    logger.info(f"Nueva jornada {today}: contadores diarios reseteados.")
+            except Exception:
+                pass
+
+    daily_reset_thread = threading.Thread(target=daily_reset_loop, daemon=True, name="daily-reset")
+    daily_reset_thread.start()
 
     # Sincronización inicial
     snap = portfolio_tracker.get_snapshot()
