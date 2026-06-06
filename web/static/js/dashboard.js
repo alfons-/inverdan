@@ -29,7 +29,28 @@ const fmt = {
   tsDate: s => s ? new Date(s).toLocaleString('es-ES', {hour:'2-digit', minute:'2-digit', second:'2-digit', day:'2-digit', month:'2-digit'}) : '—',
   // Etiqueta corta para el eje X del gráfico: día y mes (p. ej. "02/06")
   tsAxis: s => s ? new Date(s).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'}) : '',
+  // Clave de día (para agrupar filas por jornada) y etiqueta legible del día
+  dayKey:   s => s ? new Date(s).toDateString() : '',
+  dayLabel: s => s ? new Date(s).toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'}) : '',
 };
+
+// Intercala una fila separadora con la fecha entre los grupos de cada día.
+// Las filas vienen en orden (más reciente primero); se inserta un divisor cada
+// vez que cambia la jornada respecto a la fila anterior.
+function rowsWithDayDividers(items, getTs, colspan, renderRow) {
+  let lastDay = null;
+  const out = [];
+  for (const it of items) {
+    const ts = getTs(it);
+    const day = fmt.dayKey(ts);
+    if (day && day !== lastDay) {
+      out.push(`<tr class="day-divider"><td colspan="${colspan}">${fmt.dayLabel(ts)}</td></tr>`);
+      lastDay = day;
+    }
+    out.push(renderRow(it));
+  }
+  return out.join('');
+}
 
 function colorClass(v) {
   if (v > 0) return 'text-green';
@@ -94,7 +115,7 @@ function startClock() {
 
 // ── NAVIGATION ─────────────────────────────────────────
 function navigate(section) {
-  document.querySelectorAll('.nav-item').forEach(el => {
+  document.querySelectorAll('.nav-item, .topbar-link').forEach(el => {
     el.classList.toggle('active', el.dataset.section === section);
   });
   document.querySelectorAll('.section').forEach(el => {
@@ -116,7 +137,7 @@ function navigate(section) {
   if (section === 'market')  fetchMarket();
 }
 
-document.querySelectorAll('.nav-item, .card-link').forEach(el => {
+document.querySelectorAll('.nav-item, .card-link, .topbar-link').forEach(el => {
   if (el.dataset.section) {
     el.addEventListener('click', e => {
       e.preventDefault();
@@ -128,6 +149,17 @@ document.querySelectorAll('.nav-item, .card-link').forEach(el => {
 
 $('sidebarToggle').addEventListener('click', () => {
   $('sidebar').classList.toggle('open');
+});
+
+// Cerrar el menú lateral al tocar el fondo o pulsar Escape (en móvil el menú
+// abierto tapa el propio botón hamburguesa, así que sin esto no se podía cerrar
+// sin navegar a otra sección). Usamos ?. para no romper la inicialización si la
+// plantilla servida aún no incluye #sidebarBackdrop (p. ej. caché de Flask).
+$('sidebarBackdrop')?.addEventListener('click', () => {
+  $('sidebar')?.classList.remove('open');
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('sidebar')?.classList.remove('open');
 });
 
 // ── PNL CHART ────────────────────────────────────────────
@@ -242,15 +274,26 @@ function updateOverview(data) {
   $('kpiEquity').textContent = fmt.usdPlain(p.equity);
   $('kpiEquitySub').textContent = 'Valor total del portfolio';
 
+  // % sobre el equity (valor de la cuenta), para dar contexto al importe en $
+  const eq = p.equity || 0;
+
   const dpnl = p.daily_pnl ?? 0;
+  const dpct = eq ? dpnl / eq * 100 : null;
   $('kpiDailyPnl').innerHTML = `<span class="${colorClass(dpnl)}">${fmt.usd(dpnl)}</span>`;
-  $('kpiDailyPnlSub').textContent = 'Resultado de hoy';
+  $('kpiDailyPnlSub').innerHTML = 'Resultado de hoy'
+    + (dpct != null ? ` · <span class="${colorClass(dpct)}">${fmt.pct(dpct)}</span>` : '');
 
   const upnl = p.total_unrealized_pnl ?? 0;
+  const upct = eq ? upnl / eq * 100 : null;
   $('kpiUnrealizedPnl').innerHTML = `<span class="${colorClass(upnl)}">${fmt.usd(upnl)}</span>`;
-  $('kpiUnrealizedSub').textContent = 'En posiciones abiertas';
+  $('kpiUnrealizedSub').innerHTML = 'En posiciones abiertas'
+    + (upct != null ? ` · <span class="${colorClass(upct)}">${fmt.pct(upct)}</span>` : '');
 
   $('kpiBuyingPower').textContent = fmt.usdPlain(p.buying_power);
+  const noMargin = p.available_no_margin;
+  $('kpiBuyingPowerSub').innerHTML = noMargin != null
+    ? `Sin deuda: <span class="text-green">${fmt.usdPlain(noMargin)}</span>`
+    : 'Capacidad de inversión';
 
   const trades = p.trades_today ?? 0;
   const wins   = p.wins_today ?? 0;
@@ -383,7 +426,7 @@ function renderSignals(signals) {
     body.innerHTML = '<tr><td colspan="9" class="empty">Sin señales</td></tr>';
     return;
   }
-  body.innerHTML = filtered.map(s => {
+  body.innerHTML = rowsWithDayDividers(filtered, s => s._ts || s.timestamp, 9, s => {
     const cls = s.action === 'BUY' ? 'badge-green' : s.action === 'SELL' ? 'badge-red' : 'badge-yellow';
     const mlCls = s.ml_signal === 'BUY' ? 'text-green' : s.ml_signal === 'SELL' ? 'text-red' : 'text-muted';
     const rsi = s.ind_rsi ? Number(s.ind_rsi).toFixed(1) : '—';
@@ -398,7 +441,7 @@ function renderSignals(signals) {
       <td class="text-muted">${rsi}</td>
       <td class="text-muted" title="${s.reasoning || ''}">${(s.reasoning || '').substring(0, 50)}${s.reasoning?.length > 50 ? '…' : ''}</td>
     </tr>`;
-  }).join('');
+  });
 
   // Señales preview en overview
   const previewBody = $('signalsPreviewBody');
@@ -450,12 +493,13 @@ function renderTrades(trades, stats) {
 
   const body = $('tradesBody');
   if (!trades.length) {
-    body.innerHTML = '<tr><td colspan="9" class="empty">Sin operaciones registradas</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="empty">Sin operaciones registradas</td></tr>';
     return;
   }
-  body.innerHTML = trades.map(t => {
+  body.innerHTML = rowsWithDayDividers(trades, t => t._ts, 10, t => {
     const cls = t.action === 'BUY' ? 'badge-green' : 'badge-red';
     const pnl = t.pnl ?? null;
+    const pct = t.pnl_pct ?? null;
     return `<tr>
       <td class="text-muted">${fmt.tsDate(t._ts)}</td>
       <td><b>${t.symbol || '—'}</b></td>
@@ -465,9 +509,10 @@ function renderTrades(trades, stats) {
       <td class="text-muted">${t.stop_loss ? fmt.usdPlain(t.stop_loss) : '—'}</td>
       <td class="text-muted">${t.take_profit ? fmt.usdPlain(t.take_profit) : '—'}</td>
       <td>${pnl != null ? pnlHtml(pnl) : '—'}</td>
+      <td>${pct != null ? `<span class="${colorClass(pct)}">${fmt.pct(pct)}</span>` : '—'}</td>
       <td class="text-muted" style="font-size:11px">${(t.order_id || '').substring(0, 12)}…</td>
     </tr>`;
-  }).join('');
+  });
 }
 
 // ── LOGS ────────────────────────────────────────────────

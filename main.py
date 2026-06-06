@@ -406,11 +406,16 @@ def main():
         while True:
             try:
                 snap = portfolio_tracker.get_snapshot()
+                # Exposición bruta (valor de las posiciones) y capital propio libre:
+                # lo que se puede invertir sin recurrir al margen (sin endeudarse).
+                gross_exposure = sum(p.market_value for p in snap.positions)
+                available_no_margin = snap.equity - gross_exposure
                 state_data = {
                     "auto_trade": dash_state.auto_trade,
                     "portfolio": {
                         "equity": snap.equity,
                         "buying_power": snap.buying_power,
+                        "available_no_margin": round(available_no_margin, 2),
                         "daily_pnl": round(snap.daily_pnl, 2),
                         "total_unrealized_pnl": round(snap.total_unrealized_pnl, 2),
                         "trades_today": snap.trades_today,

@@ -256,10 +256,38 @@ def api_signals():
     return jsonify({"signals": signals, "count": len(signals)})
 
 
+def _pnl_pct(trade: dict) -> float | None:
+    """
+    Rentabilidad % de una operación cerrada, a partir de los campos ya
+    registrados (pnl, precio de salida, cantidad y acción de cierre).
+
+    El coste (entrada × cantidad) se deduce del pnl:
+      cierre SELL (cerraba un largo):  entrada = salida − pnl/qty
+      cierre BUY  (cerraba un corto):  entrada = salida + pnl/qty
+    """
+    pnl = trade.get("pnl")
+    qty = trade.get("qty")
+    price = trade.get("price")
+    action = trade.get("action")
+    if pnl is None or not qty or not price:
+        return None
+    try:
+        per_share = pnl / qty
+        entry = (price - per_share) if action == "SELL" else (price + per_share)
+        cost = abs(entry * qty)
+        return round(pnl / cost * 100, 2) if cost else None
+    except (TypeError, ZeroDivisionError):
+        return None
+
+
 @app.route("/api/trades")
 def api_trades():
     limit = int(request.args.get("limit", 100))
     trades = read_jsonl(TRADES_LOG, limit)
+
+    # Enriquecer cada operación con su rentabilidad %
+    for t in trades:
+        t["pnl_pct"] = _pnl_pct(t)
 
     # Estadísticas solo sobre operaciones CERRADAS (cierres reales SL/TP, que
     # llevan "close_reason"). Las aperturas registran "pnl": null o 0.0 y no

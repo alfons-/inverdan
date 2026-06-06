@@ -68,6 +68,17 @@ html, body {
   transition: transform 0.25s ease;
 }
 
+/* Fondo oscuro tras el menú lateral abierto en móvil. Oscurece el contenido y
+   sirve de zona de cierre al tocar fuera (igual que el overlay del modal).
+   z-index entre la topbar (90) y la sidebar (100). Solo visible en móvil. */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+}
+
 .sidebar-brand {
   display: flex;
   align-items: center;
@@ -182,6 +193,29 @@ html, body {
   font-weight: 600;
   color: var(--text-primary);
 }
+/* Accesos directos en la topbar. Ocultos por defecto (mobile-first) y visibles
+   a partir de 600px de ancho. */
+.topbar-shortcuts {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+.topbar-link {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.topbar-link:hover { color: var(--text-primary); background: var(--bg-card-alt); }
+.topbar-link.active { color: var(--accent); background: var(--accent-dim); }
+@media (min-width: 600px) { .topbar-shortcuts { display: flex; } }
 .topbar-right {
   margin-left: auto;
   display: flex;
@@ -1185,6 +1219,7 @@ html, body {
 @media (max-width: 900px) {
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
+  .sidebar.open ~ .sidebar-backdrop { display: block; }
   .main-content { margin-left: 0; }
   .topbar { left: 0; }
   .sidebar-toggle { display: block; }
@@ -1195,4 +1230,27 @@ html, body {
   .section { padding: 14px; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
   .kpi-value { font-size: 20px; }
+}
+
+/* Fila separadora de día (en negativo: fondo de acento, texto oscuro) */
+.day-divider td {
+  background: var(--accent);
+  color: var(--bg-base);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--bg-base);
+  border-bottom: 1px solid var(--bg-base);
+}
+.day-divider td::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 11px;
+  background: var(--bg-base);
+  border-radius: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
 }
