@@ -67,6 +67,32 @@ class TestRiskManager:
         # Max shares = 5000/3 ≈ 1666, pero también limitado a 5000/150 ≈ 33
         assert qty <= 34
 
+    # ── Tope por presupuesto de exposición restante (sizing sin margen) ───────
+    def test_sizing_capped_by_remaining_exposure_budget(self):
+        # Exposición al 79% del equity (100k): solo quedan $1.000 de presupuesto
+        # (techo 80% − 79%), que a $150/acción son 6 acciones, muy por debajo del
+        # tope del 5% (33). El sizing debe respetar el presupuesto, no el 5%.
+        self.rm._total_exposure = 79_000
+        qty = self.rm.size_position(make_signal(), 100_000, atr=1.5)
+        assert qty == 6
+        # La exposición resultante no supera el techo del 80% → sin margen.
+        assert 79_000 + qty * 150 <= 0.80 * 100_000
+
+    def test_sizing_returns_zero_when_budget_exhausted(self):
+        # Con la exposición ya en el techo no debe abrirse nada. Antes el
+        # max(1, …) forzaba 1 acción, que habría requerido margen.
+        self.rm._total_exposure = 80_000
+        assert self.rm.size_position(make_signal(), 100_000, atr=1.5) == 0
+
+    def test_sizing_buying_power_cannot_exceed_budget(self):
+        # Un buying_power enorme (margen ~3,5×) NO debe permitir superar el
+        # presupuesto de exposición sin deuda: sigue topado a 6 acciones.
+        self.rm._total_exposure = 79_000
+        qty = self.rm.size_position(
+            make_signal(), 100_000, atr=1.5, buying_power=350_000
+        )
+        assert qty == 6
+
     def test_compute_stops_buy(self):
         sl, tp = self.rm.compute_stops(150.0, atr=1.5, action="BUY")
         assert sl < 150.0   # Stop-loss por debajo del precio
@@ -119,3 +145,18 @@ class TestRiskManager:
         p2 = self.rm.record_fill("MSFT", "buy", 465.0, 3)
         assert round(p1 + p2, 2) == -160.0
         assert not self.rm.has_open_position("MSFT")  # cerrada del todo
+
+    def test_partial_fills_count_as_one_loss(self):
+        # Un cierre perdedor en 3 fills parciales = UNA pérdida consecutiva, no 3
+        self.rm.record_fill("NVDA", "buy", 210.0, 4)     # abrir largo
+        self.rm.record_fill("NVDA", "sell", 208.0, 2)    # parcial: sigue abierta
+        assert self.rm._consecutive_losses == 0
+        self.rm.record_fill("NVDA", "sell", 208.0, 1)    # parcial
+        self.rm.record_fill("NVDA", "sell", 208.0, 1)    # cierre completo
+        assert self.rm._consecutive_losses == 1
+
+    def test_winning_close_resets_streak(self):
+        self.rm._consecutive_losses = 3
+        self.rm.record_fill("X", "buy", 100.0, 2)
+        self.rm.record_fill("X", "sell", 105.0, 2)       # ganancia
+        assert self.rm._consecutive_losses == 0

@@ -23,6 +23,7 @@ class _OpenPosition:
     entry: float
     side: str   # "long" | "short"
     qty: int
+    realized: float = 0.0   # P&L acumulado de los fills parciales del cierre
 
 
 class RiskManager:
@@ -97,8 +98,15 @@ class RiskManager:
     ) -> int:
         """
         Calcula el número de acciones usando ATR-based position sizing.
-        Arriesga max_position_pct del portfolio dividido entre 2*ATR por acción.
-        El parámetro buying_power limita el tamaño al capital disponible real.
+
+        El tamaño se acota, en este orden, por:
+          1. Riesgo por operación (ATR): max_position_pct / (2*ATR).
+          2. % máximo del portfolio por posición (max_position_pct).
+          3. Presupuesto de exposición restante (capital propio, SIN margen).
+          4. Buying power real de Alpaca (salvaguarda anti-rechazo del bróker).
+
+        El parámetro buying_power es solo la salvaguarda (4): NO representa
+        capital sin deuda, porque incluye el margen que presta el bróker.
         """
         if atr <= 0 or signal.price <= 0:
             return 0
@@ -107,16 +115,28 @@ class RiskManager:
         risk_per_share = 2.0 * atr  # Stop-loss a 2*ATR
         shares = int(max_risk / risk_per_share)
 
-        # Límite por % de portfolio
+        # Límite por % de portfolio por posición
         max_shares_by_value = int((portfolio_value * self._cfg.max_position_pct) / signal.price)
         shares = min(shares, max_shares_by_value)
 
-        # Límite por buying power real disponible en Alpaca
+        # Límite por presupuesto de exposición restante (capital propio, sin
+        # margen). Como max_total_exposure ≤ 1.0 (forzado por Pydantic), este
+        # tope nunca supera el equity → es estructuralmente imposible endeudarse.
+        with self._lock:
+            current_exposure = self._total_exposure
+        remaining_budget = self._cfg.max_total_exposure * portfolio_value - current_exposure
+        max_shares_by_budget = int(max(remaining_budget, 0.0) / signal.price)
+        shares = min(shares, max_shares_by_budget)
+
+        # Salvaguarda secundaria: no exceder el buying power real de Alpaca para
+        # evitar rechazos del bróker. NO es un límite «sin deuda»: lo incluye.
         if buying_power > 0:
             max_shares_by_bp = int(buying_power / signal.price)
             shares = min(shares, max_shares_by_bp)
 
-        return max(1, shares)
+        # max(0, …): si no queda presupuesto devolvemos 0 y el executor descarta
+        # la orden (qty <= 0). Nunca forzamos una compra que requiera margen.
+        return max(0, shares)
 
     def compute_stops(
         self, entry_price: float, atr: float, action: str
@@ -228,15 +248,20 @@ class RiskManager:
                 pnl = (existing.entry - price) * close_qty
 
             self._total_exposure -= existing.entry * close_qty
-            existing.qty -= close_qty
-            if existing.qty <= 0:
-                self._open_positions.pop(symbol, None)
-
             self._daily_pnl += pnl
-            if pnl < 0:
-                self._consecutive_losses += 1
-            else:
-                self._consecutive_losses = 0
+            existing.realized += pnl     # acumula el P&L de los fills parciales
+            existing.qty -= close_qty
+
+            # La racha de pérdidas consecutivas solo se evalúa cuando la posición
+            # se cierra POR COMPLETO, sobre el P&L total acumulado. Así un cierre
+            # en varios fills parciales cuenta como UNA operación, no como varias
+            # (evita que el circuit breaker salte antes de tiempo).
+            if existing.qty <= 0:
+                if existing.realized < 0:
+                    self._consecutive_losses += 1
+                else:
+                    self._consecutive_losses = 0
+                self._open_positions.pop(symbol, None)
 
             logger.info(
                 f"Trade cerrado {symbol} ({existing.side}, {close_qty} acc): "
