@@ -39,6 +39,7 @@ class RiskManager:
         self._orders_this_minute: int = 0
         self._last_minute: int = 0
         self._open_positions: Dict[str, _OpenPosition] = {}  # symbol -> posición
+        self._open_order_symbols: set = set()  # símbolos con órdenes ABIERTAS (sin rellenar) en el broker
         self._total_exposure: float = 0.0
         self._circuit_open: bool = False
         self._last_sync_signature: Optional[tuple] = None  # evita logs repetidos en cada sync
@@ -82,6 +83,13 @@ class RiskManager:
             # bracket orders sobre posiciones ya abiertas)
             if signal.symbol in self._open_positions:
                 return False, f"Ya hay posición abierta en {signal.symbol}"
+
+            # Tampoco operar si ya hay una orden ABIERTA (sin rellenar) en el
+            # símbolo: Alpaca rechazaría la nueva orden (p. ej. «cannot open a
+            # short sell while a long buy order is open»). Lo cortamos aquí para
+            # evitar ese rechazo del broker y el ruido de notificaciones.
+            if signal.symbol in self._open_order_symbols:
+                return False, f"Orden abierta en {signal.symbol}"
 
             # Exposición máxima total
             if self._total_exposure >= cfg.max_total_exposure * portfolio_value:
@@ -163,10 +171,11 @@ class RiskManager:
 
     def sync_from_broker(self, broker) -> None:
         """
-        Inicializa el estado interno (_open_positions y _total_exposure) a partir
-        de las posiciones reales del broker. Sin esto, tras un reinicio el bot
-        creía no tener posiciones abiertas y podía duplicar señales BUY o
-        infraestimar la exposición total.
+        Inicializa el estado interno (_open_positions, _open_order_symbols y
+        _total_exposure) a partir del estado real del broker. Sin esto, tras un
+        reinicio el bot creía no tener posiciones/órdenes abiertas y podía
+        duplicar señales o intentar abrir el lado contrario de una orden viva
+        (que Alpaca rechaza con «Orden rechazada por broker»).
         """
         try:
             positions = broker.get_positions()
@@ -174,8 +183,24 @@ class RiskManager:
             logger.warning(f"sync_from_broker: no se pudieron leer posiciones: {e}")
             return
 
+        # Símbolos con órdenes ABIERTAS (sin rellenar). Se rastrean aparte de las
+        # posiciones: una orden bracket pendiente todavía no es una posición, pero
+        # Alpaca rechaza abrir el lado contrario mientras la orden siga viva.
+        open_order_symbols: set = set()
+        try:
+            for o in broker.get_open_orders():
+                for obj in (o, *(getattr(o, "legs", None) or [])):
+                    sym = getattr(obj, "symbol", None)
+                    if sym:
+                        open_order_symbols.add(sym)
+        except (AttributeError, TypeError):
+            pass  # broker sin get_open_orders (tests/mocks)
+        except Exception as e:
+            logger.warning(f"sync_from_broker: no se pudieron leer órdenes abiertas: {e}")
+
         with self._lock:
             self._open_positions.clear()
+            self._open_order_symbols = open_order_symbols
             self._total_exposure = 0.0
             count = 0
             for pos in positions:

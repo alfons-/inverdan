@@ -60,6 +60,15 @@ class TestRiskManager:
         ok, reason = self.rm.approve(make_signal(), 100_000)
         assert not ok
 
+    def test_open_order_blocks_new_signal(self):
+        # Con una orden ABIERTA (sin rellenar) en el símbolo, approve la rechaza
+        # antes de llegar al broker, evitando el rechazo de Alpaca
+        # "cannot open a short sell while a long buy order is open".
+        self.rm._open_order_symbols = {"AAPL"}
+        ok, reason = self.rm.approve(make_signal(symbol="AAPL"), 100_000)
+        assert not ok
+        assert "Orden abierta" in reason
+
     def test_position_sizing(self):
         qty = self.rm.size_position(make_signal(), 100_000, atr=1.5)
         assert qty > 0

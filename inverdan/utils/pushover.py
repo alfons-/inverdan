@@ -74,6 +74,7 @@ class PushoverNotifier:
     # Rechazos rutinarios que no necesitan notificación
     _SILENT_REJECTIONS = (
         "Ya hay posición abierta",
+        "Orden abierta",
         "Señal HOLD",
         "Confianza baja",
         "Precio $",
