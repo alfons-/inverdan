@@ -64,6 +64,11 @@ class RiskSettings(BaseModel):
     max_orders_per_minute: int = 3
     min_stock_price: float = 5.0
     min_daily_volume: int = 500_000
+    # Filtro de tendencia mayor: veta operar contra la tendencia del timeframe
+    # indicado (por defecto SMA50 en velas diarias). Evita shortear en tendencia
+    # alcista mayor / comprar en bajista, sin depender del SMA200 intradía (~3,3 h).
+    trend_timeframe: str = "1Day"
+    trend_sma_period: int = Field(50, gt=1)
 
 
 class PushoverSettings(BaseModel):

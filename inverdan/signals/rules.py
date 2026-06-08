@@ -4,12 +4,17 @@ from __future__ import annotations
 from ..indicators.calculator import IndicatorSnapshot
 
 
-def rule_based_signal(snap: IndicatorSnapshot) -> tuple[str, list[str], int]:
+def rule_based_signal(
+    snap: IndicatorSnapshot, daily_trend: float | None = None
+) -> tuple[str, list[str], int]:
     """
     Aplica reglas técnicas clásicas y retorna (señal, razones, fuerza).
     Señal: "BUY", "SELL" o "HOLD"
     Fuerza: puntos de la dirección dominante (0 si HOLD). Permite al agregador
     graduar la confianza en lugar de usar un valor fijo.
+
+    daily_trend: precio/SMA-1 del timeframe mayor (p. ej. SMA50 diaria) usado por
+    el filtro de tendencia. Si es None se cae al SMA200 intradía como respaldo.
     """
     if not snap.valid:
         return "HOLD", ["Indicadores no disponibles"], 0
@@ -93,15 +98,18 @@ def rule_based_signal(snap: IndicatorSnapshot) -> tuple[str, list[str], int]:
         return "HOLD", reasons, 0
 
     # ---- Filtro de tendencia mayor (ESTRICTO) ----
-    # No operar contra la SMA200: la estrategia es de reversión a la media y, sin
-    # este filtro, abría cortos en plena tendencia alcista (la causa del -24%).
-    #   precio > SMA200 → tendencia alcista → se vetan los cortos (SELL)
-    #   precio < SMA200 → tendencia bajista → se vetan los largos (BUY)
-    if action == "SELL" and snap.price_vs_sma200 > 0:
-        reasons.append("Veto: corto bloqueado en tendencia alcista (precio > SMA200)")
+    # No operar contra la tendencia mayor: la estrategia es de reversión a la
+    # media y, sin este filtro, abría cortos en plena tendencia alcista (la causa
+    # del -24%). Se usa la tendencia del timeframe superior (p. ej. SMA50 diaria)
+    # si está disponible; si no, el SMA200 intradía como respaldo.
+    #   tendencia alcista → se vetan los cortos (SELL)
+    #   tendencia bajista → se vetan los largos (BUY)
+    major_trend = daily_trend if daily_trend is not None else snap.price_vs_sma200
+    if action == "SELL" and major_trend > 0:
+        reasons.append("Veto: corto bloqueado en tendencia alcista mayor")
         return "HOLD", reasons, 0
-    if action == "BUY" and snap.price_vs_sma200 < 0:
-        reasons.append("Veto: largo bloqueado en tendencia bajista (precio < SMA200)")
+    if action == "BUY" and major_trend < 0:
+        reasons.append("Veto: largo bloqueado en tendencia bajista mayor")
         return "HOLD", reasons, 0
 
     return action, reasons, strength

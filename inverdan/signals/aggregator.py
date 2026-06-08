@@ -24,9 +24,10 @@ class SignalAggregator:
       Acuerdo de al menos 2 capas con confianza >= threshold → señal activa.
     """
 
-    def __init__(self, settings: Settings, registry: ModelRegistry):
+    def __init__(self, settings: Settings, registry: ModelRegistry, trend_provider=None):
         self._cfg = settings
         self._registry = registry
+        self._trend_provider = trend_provider  # tendencia mayor (timeframe superior); puede ser None
 
     def evaluate(
         self,
@@ -55,8 +56,9 @@ class SignalAggregator:
                 timestamp=timestamp or datetime.utcnow(),
             )
 
-        # Capa 1: Reglas técnicas
-        rule_signal, rule_reasons, rule_strength = rule_based_signal(snap)
+        # Capa 1: Reglas técnicas (con filtro de tendencia mayor del timeframe superior)
+        daily_trend = self._trend_provider.get(symbol) if self._trend_provider else None
+        rule_signal, rule_reasons, rule_strength = rule_based_signal(snap, daily_trend=daily_trend)
 
         # Capa 2: Random Forest
         feature_vec = build_feature_vector(snap, timestamp)

@@ -45,6 +45,39 @@ class TestRuleBasedSignal:
         assert action == "HOLD"
         assert any("Veto" in r for r in reasons)
 
+    # ── Filtro de tendencia DIARIA (timeframe superior) ───────────────────────
+    def test_short_vetoed_by_daily_uptrend(self):
+        # Intradía permitiría el corto (price_vs_sma200 < 0), pero la tendencia
+        # diaria es alcista (daily_trend > 0) → vetado.
+        snap = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003,
+                         price_vs_sma200=-0.07)
+        action, reasons, _ = rule_based_signal(snap, daily_trend=0.05)
+        assert action == "HOLD"
+        assert any("Veto" in r for r in reasons)
+
+    def test_short_allowed_when_daily_downtrend(self):
+        # Intradía vetaría (price_vs_sma200 > 0), pero la tendencia diaria es
+        # bajista (daily_trend < 0) → el corto SÍ se permite.
+        snap = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003,
+                         price_vs_sma200=0.07)
+        action, _, _ = rule_based_signal(snap, daily_trend=-0.05)
+        assert action == "SELL"
+
+    def test_buy_vetoed_by_daily_downtrend(self):
+        snap = make_snap(rsi=25.0, bb_pct=0.05, ema_crossover=0.003,
+                         price_vs_sma200=0.07)
+        action, reasons, _ = rule_based_signal(snap, daily_trend=-0.05)
+        assert action == "HOLD"
+        assert any("Veto" in r for r in reasons)
+
+    def test_daily_trend_none_falls_back_to_intraday(self):
+        # Sin dato diario (None) se usa el SMA200 intradía: aquí es bajista
+        # (price_vs_sma200 < 0), así que el corto se permite.
+        snap = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003,
+                         price_vs_sma200=-0.07)
+        action, _, _ = rule_based_signal(snap, daily_trend=None)
+        assert action == "SELL"
+
     def test_neutral_holds(self):
         snap = make_snap(rsi=50.0)
         action, _, _ = rule_based_signal(snap)

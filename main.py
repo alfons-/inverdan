@@ -32,6 +32,7 @@ from inverdan.indicators.calculator import IndicatorCalculator
 from inverdan.ml.features import build_feature_vector
 from inverdan.ml.registry import ModelRegistry
 from inverdan.signals.aggregator import SignalAggregator
+from inverdan.signals.trend_filter import DailyTrendProvider
 from inverdan.execution.broker import AlpacaBroker
 from inverdan.execution.risk import RiskManager
 from inverdan.execution.portfolio import PortfolioTracker
@@ -136,8 +137,20 @@ def main():
             "El sistema funcionará solo con señales de reglas técnicas."
         )
 
-    # Señales
-    aggregator = SignalAggregator(settings, model_registry)
+    # Cliente histórico (warm-up de indicadores + tendencia mayor diaria)
+    hist_client = HistoricalDataClient(settings)
+
+    # Filtro de tendencia mayor (p. ej. SMA50 diaria). Se calcula al arrancar para
+    # que las primeras señales ya respeten la tendencia del timeframe superior.
+    trend_provider = DailyTrendProvider(settings, hist_client)
+    logger.info(
+        f"Calculando tendencia mayor ({settings.risk.trend_timeframe} "
+        f"SMA{settings.risk.trend_sma_period})..."
+    )
+    trend_provider.refresh(settings.symbols)
+
+    # Señales (con filtro de tendencia mayor)
+    aggregator = SignalAggregator(settings, model_registry, trend_provider=trend_provider)
 
     # Estado del dashboard
     dash_state = DashboardState(
@@ -255,7 +268,6 @@ def main():
 
     # Precargar datos históricos para warm-up de indicadores
     logger.info("Precargando datos históricos para warm-up...")
-    hist_client = HistoricalDataClient(settings)
     for sym in settings.symbols:
         try:
             df = hist_client.fetch_bars(sym, days=5, cache=True)
@@ -297,6 +309,17 @@ def main():
 
     sync_thread = threading.Thread(target=portfolio_sync_loop, daemon=True, name="portfolio-sync")
     sync_thread.start()
+
+    # ── Refresco periódico de la tendencia mayor (diaria) ────────────────────
+    def trend_refresh_loop():
+        while True:
+            time.sleep(3 * 3600)   # las velas diarias cambian 1 vez/día; cada 3 h sobra
+            try:
+                trend_provider.refresh(settings.symbols)
+            except Exception:
+                pass
+
+    threading.Thread(target=trend_refresh_loop, daemon=True, name="trend-refresh").start()
 
     # ── Protector de posiciones sin stop-loss ────────────────────────────────
     def _symbols_with_held_shares() -> set:

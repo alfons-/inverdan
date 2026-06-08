@@ -35,6 +35,8 @@ risk:
   min_stock_price: 5
   stop_loss_atr_multiplier: 2
   take_profit_atr_multiplier: 4
+  trend_timeframe: "1Day"
+  trend_sma_period: 50
 symbols:
 - AAPL
 - NVDA
