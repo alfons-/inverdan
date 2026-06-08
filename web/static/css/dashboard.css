@@ -160,10 +160,8 @@ html, body {
 
 /* ── TOPBAR ─────────────────────────────────────────── */
 .topbar {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: var(--sidebar-w);
-  right: 0;
   height: var(--topbar-h);
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
@@ -239,7 +237,6 @@ html, body {
 /* ── MAIN CONTENT ───────────────────────────────────── */
 .main-content {
   margin-left: var(--sidebar-w);
-  padding-top: var(--topbar-h);
   height: 100vh;
   overflow-y: auto;
 }
