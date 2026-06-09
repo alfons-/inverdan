@@ -256,8 +256,13 @@ def main():
             user_key=settings.pushover.user_key,
             event_bus=event_bus,
             min_signal_confidence=settings.pushover.min_signal_confidence,
+            device=settings.pushover.device,
         )
-        logger.info("Notificaciones Pushover activadas.")
+        logger.info(
+            "Notificaciones Pushover activadas"
+            + (f" (dispositivos: {settings.pushover.device})" if settings.pushover.device else " (todos los dispositivos)")
+            + "."
+        )
 
     # ── Suscriptores del bus ─────────────────────────────────────────────────
     def on_order_filled(event: OrderFilledEvent):

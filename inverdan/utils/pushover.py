@@ -20,10 +20,12 @@ class PushoverNotifier:
     """Suscribe al EventBus y envía notificaciones push via Pushover."""
 
     def __init__(self, api_token: str, user_key: str, event_bus: EventBus,
-                 min_signal_confidence: float = 0.0):
+                 min_signal_confidence: float = 0.0, device: str = ""):
         self._token = api_token
         self._user = user_key
         self._min_confidence = min_signal_confidence
+        # Dispositivos destino ("a,b"). Vacío = todos los de la cuenta.
+        self._device = device.strip()
 
         event_bus.subscribe(SignalEvent, self._on_signal)
         event_bus.subscribe(OrderFilledEvent, self._on_order_filled)
@@ -102,17 +104,16 @@ class PushoverNotifier:
 
     def _post(self, title: str, message: str, priority: int) -> None:
         try:
-            resp = requests.post(
-                _PUSHOVER_URL,
-                data={
-                    "token": self._token,
-                    "user": self._user,
-                    "title": title,
-                    "message": message,
-                    "priority": priority,
-                },
-                timeout=10,
-            )
+            data = {
+                "token": self._token,
+                "user": self._user,
+                "title": title,
+                "message": message,
+                "priority": priority,
+            }
+            if self._device:
+                data["device"] = self._device
+            resp = requests.post(_PUSHOVER_URL, data=data, timeout=10)
             if resp.status_code != 200:
                 logger.warning("Pushover respondió %s: %s", resp.status_code, resp.text)
         except Exception as exc:

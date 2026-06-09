@@ -59,3 +59,5 @@ training:
 pushover:
   enabled: true
   min_signal_confidence: 1.0   # desactivadas: solo fills y rechazos importantes
+  # Cuenta compartida: enviar solo a los dispositivos de Alfonso (no al iPhone de Diego)
+  device: "Iphone_Alfonso,ipadpro129inch3gwi-fi"

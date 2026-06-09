@@ -76,6 +76,9 @@ class PushoverSettings(BaseModel):
     api_token: str = Field(default_factory=lambda: os.environ.get("PUSHOVER_API_TOKEN", ""))
     user_key: str = Field(default_factory=lambda: os.environ.get("PUSHOVER_USER_KEY", ""))
     min_signal_confidence: float = Field(0.0, ge=0.0, le=1.0)
+    # Dispositivos destino, separados por coma (la cuenta de Pushover es compartida
+    # y sin esto las notificaciones llegan a TODOS sus dispositivos). Vacío = todos.
+    device: str = ""
 
 
 class DashboardSettings(BaseModel):
