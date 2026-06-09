@@ -17,8 +17,15 @@ import signal
 import sys
 import threading
 import time
-from datetime import datetime
+import warnings
+from datetime import datetime, timezone
 from pathlib import Path
+
+# Silenciar dos warnings benignos de sklearn que se re-emiten en CADA predicción
+# del RandomForest (sklearn invalida el registro de warnings en cada predict).
+# Con launchd sin rotación de stderr llegaron a acumular 4 GB en bot_stderr.log.
+warnings.filterwarnings("ignore", message=r".*sklearn\.utils\.parallel\.delayed.*")
+warnings.filterwarnings("ignore", message=r"X does not have valid feature names.*")
 
 # Añadir el directorio raíz al path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -464,7 +471,7 @@ def main():
                         "daily_pnl": round(risk_manager.daily_pnl, 2),
                         "open_positions": risk_manager.open_positions_count,
                     },
-                    "updated_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 # Leer auto_trade del fichero por si el dashboard lo cambió
                 if _state_file.exists():
@@ -483,7 +490,11 @@ def main():
                         pass
 
                 state_data["market"] = last_snaps
-                _state_file.write_text(json.dumps(state_data))
+                # Escritura atómica (tmp + replace): el dashboard nunca lee un
+                # JSON a medio escribir (antes provocaba lecturas vacías).
+                _tmp_file = _state_file.with_suffix(".json.tmp")
+                _tmp_file.write_text(json.dumps(state_data))
+                os.replace(_tmp_file, _state_file)
             except Exception:
                 pass
             time.sleep(3)

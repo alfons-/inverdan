@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import logging.handlers
 import os
 import platform
 import signal
@@ -65,13 +66,24 @@ _web_log_dir = ROOT / "logs"
 _web_log_dir.mkdir(exist_ok=True)
 _web_logger = logging.getLogger("inverdan.web")
 if not _web_logger.handlers:
-    _h = logging.FileHandler(_web_log_dir / "web.log")
+    _h = logging.handlers.RotatingFileHandler(
+        _web_log_dir / "web.log", maxBytes=2 * 1024 * 1024, backupCount=2
+    )
     _h.setFormatter(logging.Formatter(
         "[%(asctime)s] %(levelname)-8s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     ))
     _web_logger.addHandler(_h)
     _web_logger.setLevel(logging.INFO)
+
+# El access-log de werkzeug (una línea por request) crecía sin límite en
+# logs/dashboard_stderr.log con el polling del dashboard. Solo errores.
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+# Ceba el cálculo de CPU: con interval=None las llamadas siguientes devuelven
+# el uso desde la llamada anterior SIN bloquear (interval=0.1 añadía 100 ms
+# a cada petición de /api/status).
+psutil.cpu_percent(interval=None)
 
 
 # ── Manejadores globales de error ────────────────────────────────────────────
@@ -111,25 +123,54 @@ def read_state() -> dict:
     return {}
 
 
+def write_state(state: dict) -> None:
+    """Escritura atómica de state.json (tmp + replace).
+
+    El bot reescribe este fichero cada 3 s; sin atomicidad, él o el dashboard
+    podían leer un JSON a medio escribir. El nombre del tmp es distinto al que
+    usa el bot (.json.tmp) para que ambos procesos no se pisen.
+    """
+    tmp = STATE_FILE.with_suffix(".json.webtmp")
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, STATE_FILE)
+
+
+def _tail_lines(path: Path, max_lines: int, _block: int = 65536) -> list[str]:
+    """Últimas max_lines líneas leyendo bloques desde el final del fichero.
+
+    Evita cargar el fichero completo en memoria: signals.log y trades.log crecen
+    sin límite (audit trail) y antes se leían enteros en cada poll del dashboard.
+    """
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            end = f.tell()
+            data = b""
+            while end > 0 and data.count(b"\n") <= max_lines:
+                start = max(0, end - _block)
+                f.seek(start)
+                data = f.read(end - start) + data
+                end = start
+        return [l.decode("utf-8", "replace") for l in data.splitlines()[-max_lines:]]
+    except Exception:
+        return []
+
+
 def read_jsonl(path: Path, limit: int = 100) -> list:
-    """Lee las últimas N líneas de un fichero JSON Lines."""
+    """Lee las últimas N entradas de un fichero JSON Lines (de nueva a vieja)."""
     if not path.exists():
         return []
     lines = []
-    try:
-        with open(path) as f:
-            raw = f.readlines()
-        for line in reversed(raw[-limit * 2:]):
-            line = line.strip()
-            if line:
-                try:
-                    lines.append(json.loads(line))
-                    if len(lines) >= limit:
-                        break
-                except Exception:
-                    continue
-    except Exception:
-        pass
+    for line in reversed(_tail_lines(path, limit * 2)):
+        line = line.strip()
+        if line:
+            try:
+                lines.append(json.loads(line))
+                if len(lines) >= limit:
+                    break
+            except Exception:
+                continue
     return lines
 
 
@@ -137,16 +178,11 @@ def read_log_tail(path: Path, lines: int = 100) -> list:
     """Lee las últimas N líneas de texto de un log."""
     if not path.exists():
         return []
-    try:
-        with open(path) as f:
-            all_lines = f.readlines()
-        return [l.rstrip() for l in all_lines[-lines:]]
-    except Exception:
-        return []
+    return [l.rstrip() for l in _tail_lines(path, lines)]
 
 
-def get_bot_pid() -> int | None:
-    """Retorna el PID del bot si está corriendo."""
+def _find_bot_pid() -> int | None:
+    """Localiza el PID del bot (bot.pid o escaneo completo de procesos)."""
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text().strip())
@@ -178,6 +214,30 @@ def get_bot_pid() -> int | None:
     return None
 
 
+# Caché breve del PID: sin bot.pid válido, _find_bot_pid recorre TODOS los
+# procesos del sistema (psutil.process_iter) y el dashboard lo llama en cada
+# poll. Dentro del TTL solo se verifica que el PID cacheado siga siendo el bot.
+_BOT_PID_TTL = 5.0
+_bot_pid_cache: dict = {"pid": None, "ts": 0.0}
+
+
+def get_bot_pid() -> int | None:
+    """Retorna el PID del bot si está corriendo (con caché de pocos segundos)."""
+    now = time.time()
+    if now - _bot_pid_cache["ts"] < _BOT_PID_TTL:
+        pid = _bot_pid_cache["pid"]
+        if pid is None:
+            return None
+        try:
+            if _cmdline_is_dashboard_bot(psutil.Process(pid).cmdline()):
+                return pid
+        except Exception:
+            pass  # el proceso cacheado murió: re-escanear
+    pid = _find_bot_pid()
+    _bot_pid_cache.update(pid=pid, ts=now)
+    return pid
+
+
 def get_bot_status() -> dict:
     pid = get_bot_pid()
     if not pid:
@@ -200,7 +260,7 @@ def get_bot_status() -> dict:
 
 def get_system_metrics() -> dict:
     return {
-        "cpu_pct": psutil.cpu_percent(interval=0.1),
+        "cpu_pct": psutil.cpu_percent(interval=None),
         "ram_pct": psutil.virtual_memory().percent,
         "ram_used_gb": round(psutil.virtual_memory().used / 1e9, 1),
         "ram_total_gb": round(psutil.virtual_memory().total / 1e9, 1),
@@ -485,8 +545,7 @@ def api_control():
         state = read_state()
         state["emergency_stop"] = True
         state["emergency_stop_at"] = datetime.utcnow().isoformat()
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f)
+        write_state(state)
         if pid:
             try:
                 os.kill(pid, signal.SIGTERM)
@@ -503,8 +562,7 @@ def api_control():
         current = state.get("auto_trade", False)
         state["auto_trade"] = not current
         state["auto_trade_changed_at"] = datetime.utcnow().isoformat()
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f)
+        write_state(state)
         mode = "ACTIVADO" if state["auto_trade"] else "DESACTIVADO"
         return jsonify({"ok": True, "auto_trade": state["auto_trade"],
                         "message": f"Auto-trade {mode}"})
