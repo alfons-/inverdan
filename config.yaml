@@ -35,6 +35,8 @@ risk:
   min_stock_price: 5
   stop_loss_atr_multiplier: 2
   take_profit_atr_multiplier: 4
+  min_stop_pct: 0.025          # suelo del stop (antes 1% fijo, demasiado fino)
+  trailing_stop_pct: 3.0       # trailing stop del protector (asegura ganancias)
   trend_timeframe: "1Day"
   trend_sma_period: 50
 symbols:

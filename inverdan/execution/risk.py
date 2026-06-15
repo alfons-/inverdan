@@ -156,7 +156,7 @@ class RiskManager:
         de entrada para evitar stops que se disparen de inmediato por el spread
         o el ruido normal intradía.
         """
-        min_dist = entry_price * 0.01          # mínimo 1 % del precio
+        min_dist = entry_price * self._cfg.min_stop_pct   # suelo configurable
         sl_dist = max(atr * self._cfg.stop_loss_atr_multiplier, min_dist)
         tp_dist = max(atr * self._cfg.take_profit_atr_multiplier, min_dist * 2)
 

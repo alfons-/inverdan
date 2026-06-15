@@ -17,6 +17,7 @@ def make_settings():
     cfg.risk.max_total_exposure = 0.80
     cfg.risk.stop_loss_atr_multiplier = 2.0
     cfg.risk.take_profit_atr_multiplier = 4.0
+    cfg.risk.min_stop_pct = 0.025
     cfg.risk.max_daily_loss_pct = 0.05
     cfg.risk.max_consecutive_losses = 5
     cfg.risk.max_orders_per_minute = 3
@@ -111,6 +112,11 @@ class TestRiskManager:
         sl, tp = self.rm.compute_stops(150.0, atr=1.5, action="SELL")
         assert sl > 150.0   # Stop-loss por encima (short)
         assert tp < 150.0   # Take-profit por debajo
+
+    def test_stop_floor_uses_min_stop_pct(self):
+        # ATR diminuto → manda el suelo configurable (2,5%), no el viejo 1% fijo.
+        sl, _ = self.rm.compute_stops(100.0, atr=0.001, action="BUY")
+        assert abs((100.0 - sl) - 2.5) < 0.02   # stop a ~2,5% del precio
 
     def test_daily_loss_circuit_breaker(self):
         self.rm._daily_pnl = -5500.0  # Pérdida del 5.5% sobre 100k

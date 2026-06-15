@@ -333,67 +333,61 @@ def main():
 
     threading.Thread(target=trend_refresh_loop, daemon=True, name="trend-refresh").start()
 
-    # ── Protector de posiciones sin stop-loss ────────────────────────────────
-    def _symbols_with_held_shares() -> set:
-        """Símbolos cuyas acciones ya están retenidas por alguna orden abierta.
-
-        Cualquier orden abierta (stop, take-profit limit, leg de bracket…) retiene
-        las acciones de la posición. Mientras exista, Alpaca rechaza colocar otro
-        stop con «insufficient qty / held_for_orders». Por eso, si hay CUALQUIER
-        orden para el símbolo, el protector no debe intentar añadir otra: hacerlo
-        solo genera errores en bucle (el bug que llenó el log de 657 ERROR).
-        """
-        held = set()
+    # ── Protector de posiciones: trailing stop que asegura la ganancia ───────
+    def _orders_by_symbol() -> dict:
+        """{symbol: {'trailing','stop','tp'}} a partir de las órdenes reales."""
+        info: dict = {}
         for o in broker.get_open_orders():
-            sym = getattr(o, "symbol", None)
-            if sym:
-                held.add(sym)
-            for leg in (getattr(o, "legs", None) or []):
-                leg_sym = getattr(leg, "symbol", None)
-                if leg_sym:
-                    held.add(leg_sym)
-        return held
+            for x in (o, *(getattr(o, "legs", None) or [])):
+                sym = getattr(x, "symbol", None)
+                if not sym:
+                    continue
+                ot = str(getattr(x, "order_type", None) or getattr(x, "type", "")).lower()
+                d = info.setdefault(sym, {"trailing": False, "stop": False, "tp": False})
+                if "trailing" in ot:
+                    d["trailing"] = True
+                elif "stop" in ot:
+                    d["stop"] = True
+                elif "limit" in ot:
+                    d["tp"] = True
+        return info
 
     def protect_positions_loop():
         """
-        Garantiza que toda posición abierta tenga un stop-loss activo.
+        Asegura que toda posición abierta tenga protección que BLINDE la ganancia.
 
-        En cada iteración consulta las órdenes reales de Alpaca (no un estado
-        cacheado) para saber qué símbolos ya están protegidos, y coloca un
-        stop-market GTC solo en los que no lo estén:
-          - SHORT → stop en current_price * 1.015  (+1.5 %)
-          - LONG  → stop en current_price * 0.985  (-1.5 %)
+        Salvo que ya tenga un trailing stop o un bracket completo (stop + TP),
+        coloca un TRAILING STOP (trailing_stop_pct). Si había un stop estático
+        suelto (bracket roto: se quedaba clavado en la entrada, sin TP y sin
+        asegurar beneficio), lo cancela antes para liberar las acciones. El
+        trailing lo gestiona Alpaca en servidor: deja correr al ganador y cierra
+        cuando el precio retrocede trail% desde su mejor nivel.
         """
         time.sleep(15)   # Dejar al bot arrancar completamente
+        trail = settings.risk.trailing_stop_pct
 
         while True:
             try:
                 snap = portfolio_tracker.get_snapshot()
                 if snap.positions:
-                    held = _symbols_with_held_shares()
+                    orders = _orders_by_symbol()
                     for pos in snap.positions:
-                        # Si las acciones ya están retenidas por cualquier orden
-                        # (stop o TP), no se puede ni se debe añadir otro stop.
-                        if pos.symbol in held:
+                        o = orders.get(pos.symbol, {})
+                        # Ya bien protegida: trailing stop, o bracket completo SL+TP.
+                        if o.get("trailing") or (o.get("stop") and o.get("tp")):
                             continue
-
-                        ref_price = pos.current_price or pos.entry_price
-                        if pos.side == "short":
-                            stop_price = round(ref_price * 1.015, 2)
-                            side = "buy"
-                        else:
-                            stop_price = round(ref_price * 0.985, 2)
-                            side = "sell"
-
+                        # Stop o TP suelto (bracket incompleto) → cancelar para
+                        # liberar las acciones antes de colocar el trailing.
+                        if o.get("stop") or o.get("tp"):
+                            broker.cancel_orders_for_symbol(pos.symbol)
+                            time.sleep(1)   # dar tiempo a Alpaca a soltar las acciones
+                        side = "buy" if pos.side == "short" else "sell"
                         logger.warning(
-                            f"Posición {pos.symbol} ({pos.side} {pos.qty}) sin stop-loss. "
-                            f"Colocando stop @ ${stop_price:.2f}"
+                            f"Protegiendo {pos.symbol} ({pos.side} {pos.qty}) "
+                            f"con trailing stop {trail:.1f}%"
                         )
-                        broker.submit_stop_order(
-                            symbol=pos.symbol,
-                            side=side,
-                            qty=pos.qty,
-                            stop_price=stop_price,
+                        broker.submit_trailing_stop_order(
+                            symbol=pos.symbol, side=side, qty=pos.qty, trail_percent=trail
                         )
             except Exception as e:
                 logger.warning(f"protect_positions_loop error: {e}")

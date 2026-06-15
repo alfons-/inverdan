@@ -59,6 +59,14 @@ class RiskSettings(BaseModel):
     max_total_exposure: float = Field(0.80, gt=0, le=1.0)
     stop_loss_atr_multiplier: float = 2.0
     take_profit_atr_multiplier: float = 4.0
+    # Suelo mínimo del stop como % del precio. El ATR de 1 min es diminuto y
+    # dejaba los stops al 1%, demasiado finos: el 81% de las salidas eran stops
+    # disparados por ruido intradía antes de que la tesis funcionara.
+    min_stop_pct: float = Field(0.025, gt=0, le=0.2)
+    # Trailing stop (%) que coloca el protector: asegura ganancias dejando correr
+    # al ganador (el stop sigue al precio), en vez del stop estático que se
+    # quedaba clavado en la entrada sin proteger el beneficio.
+    trailing_stop_pct: float = Field(3.0, gt=0, le=20)
     max_daily_loss_pct: float = Field(0.05, gt=0, le=1.0)
     max_consecutive_losses: int = 5
     max_orders_per_minute: int = 3

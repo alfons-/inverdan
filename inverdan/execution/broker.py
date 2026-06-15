@@ -13,6 +13,7 @@ from alpaca.trading.requests import (
     StopLossRequest,
     StopOrderRequest,
     TakeProfitRequest,
+    TrailingStopOrderRequest,
 )
 
 from ..config.settings import Settings
@@ -176,6 +177,43 @@ class AlpacaBroker:
             else:
                 logger.error(f"Error enviando stop order {symbol}: {e}")
             return None
+
+    def submit_trailing_stop_order(
+        self, symbol: str, side: str, qty: int, trail_percent: float
+    ) -> Optional[object]:
+        """Trailing stop GTC: Alpaca traila el stop en servidor según trail_percent.
+
+        Protege la posición dejando correr al ganador (el stop sigue al precio a
+        `trail_percent` de distancia) sin cancelar/recolocar a mano en bucle.
+        """
+        try:
+            request = TrailingStopOrderRequest(
+                symbol=symbol,
+                qty=qty,
+                side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+                time_in_force=TimeInForce.GTC,
+                trail_percent=round(trail_percent, 2),
+            )
+            order = self._client.submit_order(request)
+            logger.info(
+                f"Trailing stop: {side.upper()} {qty} {symbol} "
+                f"trail={trail_percent:.2f}% | ID={order.id}"
+            )
+            return order
+        except Exception as e:
+            logger.error(f"Error enviando trailing stop {symbol}: {e}")
+            return None
+
+    def cancel_orders_for_symbol(self, symbol: str) -> int:
+        """Cancela las órdenes abiertas de un símbolo. Devuelve cuántas canceló."""
+        n = 0
+        for o in self.get_open_orders([symbol]):
+            try:
+                self._client.cancel_order_by_id(o.id)
+                n += 1
+            except Exception as e:
+                logger.warning(f"No se pudo cancelar orden de {symbol}: {e}")
+        return n
 
     def submit_market_order(self, symbol: str, side: str, qty: int) -> Optional[object]:
         """Orden de mercado simple (para cierre de posiciones)."""
