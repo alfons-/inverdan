@@ -58,7 +58,10 @@ class SignalAggregator:
 
         # Capa 1: Reglas técnicas (con filtro de tendencia mayor del timeframe superior)
         daily_trend = self._trend_provider.get(symbol) if self._trend_provider else None
-        rule_signal, rule_reasons, rule_strength = rule_based_signal(snap, daily_trend=daily_trend)
+        trend_buffer = getattr(self._cfg.risk, "trend_buffer_pct", 0.0)
+        rule_signal, rule_reasons, rule_strength = rule_based_signal(
+            snap, daily_trend=daily_trend, trend_buffer=trend_buffer
+        )
 
         # Capa 2: Random Forest
         feature_vec = build_feature_vector(snap, timestamp)

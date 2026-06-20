@@ -70,6 +70,22 @@ class TestRuleBasedSignal:
         assert action == "HOLD"
         assert any("Veto" in r for r in reasons)
 
+    def test_trend_buffer_vetoes_flat_trend(self):
+        # Tendencia plana (dentro de ±buffer del SMA): se vetan AMBAS direcciones
+        # para no hacer flip-flop en valores laterales.
+        sell = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003, price_vs_sma200=0.0)
+        a_sell, r_sell, _ = rule_based_signal(sell, daily_trend=0.005, trend_buffer=0.01)
+        assert a_sell == "HOLD" and any("Veto" in r for r in r_sell)
+        buy = make_snap(rsi=25.0, bb_pct=0.05, ema_crossover=0.003, price_vs_sma200=0.0)
+        a_buy, _, _ = rule_based_signal(buy, daily_trend=0.005, trend_buffer=0.01)
+        assert a_buy == "HOLD"   # +0,5% < buffer 1% → largo también vetado
+
+    def test_trend_buffer_allows_clear_trend(self):
+        # Fuera del buffer (tendencia clara) sí se permite operar.
+        buy = make_snap(rsi=25.0, bb_pct=0.05, ema_crossover=0.003, price_vs_sma200=0.0)
+        a, _, _ = rule_based_signal(buy, daily_trend=0.03, trend_buffer=0.01)
+        assert a == "BUY"   # +3% > buffer 1%
+
     def test_daily_trend_none_falls_back_to_intraday(self):
         # Sin dato diario (None) se usa el SMA200 intradía: aquí es bajista
         # (price_vs_sma200 < 0), así que el corto se permite.

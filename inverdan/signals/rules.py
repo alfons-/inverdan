@@ -5,7 +5,9 @@ from ..indicators.calculator import IndicatorSnapshot
 
 
 def rule_based_signal(
-    snap: IndicatorSnapshot, daily_trend: float | None = None
+    snap: IndicatorSnapshot,
+    daily_trend: float | None = None,
+    trend_buffer: float = 0.0,
 ) -> tuple[str, list[str], int]:
     """
     Aplica reglas técnicas clásicas y retorna (señal, razones, fuerza).
@@ -105,11 +107,14 @@ def rule_based_signal(
     #   tendencia alcista → se vetan los cortos (SELL)
     #   tendencia bajista → se vetan los largos (BUY)
     major_trend = daily_trend if daily_trend is not None else snap.price_vs_sma200
-    if action == "SELL" and major_trend > 0:
-        reasons.append("Veto: corto bloqueado en tendencia alcista mayor")
+    # Con trend_buffer, además de vetar ir contra la tendencia, se veta operar si
+    # la tendencia es PLANA (precio dentro de ±buffer del SMA): evita el flip-flop
+    # de dirección en valores laterales (p. ej. NVDA oscilando sobre su SMA50).
+    if action == "SELL" and major_trend > -trend_buffer:
+        reasons.append("Veto: corto bloqueado (tendencia mayor no bajista)")
         return "HOLD", reasons, 0
-    if action == "BUY" and major_trend < 0:
-        reasons.append("Veto: largo bloqueado en tendencia bajista mayor")
+    if action == "BUY" and major_trend < trend_buffer:
+        reasons.append("Veto: largo bloqueado (tendencia mayor no alcista)")
         return "HOLD", reasons, 0
 
     return action, reasons, strength

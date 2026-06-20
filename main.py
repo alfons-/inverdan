@@ -389,6 +389,11 @@ def main():
                         broker.submit_trailing_stop_order(
                             symbol=pos.symbol, side=side, qty=pos.qty, trail_percent=trail
                         )
+                # Limpiar trailing stops huérfanos (corre siempre, aunque no haya
+                # posiciones): protección de un símbolo cuya posición ya se cerró;
+                # al ser orden a mercado, podría dispararse y abrir una posición no
+                # deseada (le pasó a NVDA).
+                broker.cancel_orphan_trailing_stops({p.symbol for p in snap.positions})
             except Exception as e:
                 logger.warning(f"protect_positions_loop error: {e}")
 

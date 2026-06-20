@@ -39,6 +39,7 @@ risk:
   trailing_stop_pct: 3.0       # trailing stop del protector (asegura ganancias)
   trend_timeframe: "1Day"
   trend_sma_period: 50
+  trend_buffer_pct: 0.01       # banda neutra ±1% del SMA: no operar tendencia plana (anti-whipsaw)
 symbols:
 - AAPL
 - NVDA

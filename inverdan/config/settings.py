@@ -77,6 +77,10 @@ class RiskSettings(BaseModel):
     # alcista mayor / comprar en bajista, sin depender del SMA200 intradía (~3,3 h).
     trend_timeframe: str = "1Day"
     trend_sma_period: int = Field(50, gt=1)
+    # Banda neutra alrededor de la media de tendencia: si el precio está dentro de
+    # ±trend_buffer_pct del SMA, no se opera (tendencia poco clara), para evitar el
+    # whipsaw de dirección en valores laterales (p. ej. NVDA oscilando sobre su SMA).
+    trend_buffer_pct: float = Field(0.01, ge=0, le=0.1)
 
 
 class PushoverSettings(BaseModel):

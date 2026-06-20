@@ -215,6 +215,25 @@ class AlpacaBroker:
                 logger.warning(f"No se pudo cancelar orden de {symbol}: {e}")
         return n
 
+    def cancel_orphan_trailing_stops(self, position_symbols) -> int:
+        """Cancela trailing stops de símbolos SIN posición (protecciones huérfanas).
+
+        Cuando una posición se cierra, su trailing stop puede quedar suelto; al ser
+        una orden a mercado, podría dispararse y ABRIR una posición no deseada.
+        """
+        n = 0
+        for o in self.get_open_orders():
+            ot = str(getattr(o, "order_type", None) or getattr(o, "type", "")).lower()
+            sym = getattr(o, "symbol", None)
+            if "trailing" in ot and sym and sym not in position_symbols:
+                try:
+                    self._client.cancel_order_by_id(o.id)
+                    logger.warning(f"Trailing stop huérfano cancelado: {sym} (sin posición)")
+                    n += 1
+                except Exception as e:
+                    logger.warning(f"No se pudo cancelar trailing huérfano {sym}: {e}")
+        return n
+
     def submit_market_order(self, symbol: str, side: str, qty: int) -> Optional[object]:
         """Orden de mercado simple (para cierre de posiciones)."""
         try:

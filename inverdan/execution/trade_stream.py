@@ -15,8 +15,10 @@ from ..utils.logger import get_logger, TradeLogger
 
 logger = get_logger("execution.trade_stream")
 
-# Tipos de orden que corresponden a legs hijas de un bracket (SL o TP)
-_BRACKET_CHILD_TYPES = {"stop", "limit", "stop_limit"}
+# Tipos de orden de CIERRE que registramos: legs de bracket (SL/TP) y trailing
+# stops del protector. Sin "trailing_stop", los cierres por trailing se ignoraban
+# (no se registraban en trades.log ni actualizaban el portfolio).
+_CLOSE_ORDER_TYPES = {"stop", "limit", "stop_limit", "trailing_stop"}
 
 
 def _str_enum(value) -> str:
@@ -76,7 +78,7 @@ class AlpacaTradeStream:
             order_type = _str_enum(
                 getattr(order, "order_type", None) or getattr(order, "type", None)
             )
-            if order_type not in _BRACKET_CHILD_TYPES:
+            if order_type not in _CLOSE_ORDER_TYPES:
                 return
 
             symbol = getattr(order, "symbol", None)
@@ -106,7 +108,12 @@ class AlpacaTradeStream:
 
             order_side = _str_enum(getattr(order, "side", ""))
             order_id = str(getattr(order, "id", "unknown"))
-            close_reason = "stop_loss" if order_type == "stop" else "take_profit"
+            if "trailing" in order_type:
+                close_reason = "trailing_stop"
+            elif order_type == "limit":
+                close_reason = "take_profit"
+            else:
+                close_reason = "stop_loss"
 
             logger.info(
                 f"Bracket child fill: {order_side.upper()} {qty} {symbol} "
