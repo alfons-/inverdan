@@ -497,13 +497,28 @@ function renderTrades(trades, stats) {
     return;
   }
   body.innerHTML = rowsWithDayDividers(trades, t => t._ts, 10, t => {
-    const cls = t.action === 'BUY' ? 'badge-green' : 'badge-red';
+    // BUY abre largo / cierra corto; SELL abre corto / cierra largo.
+    // close_reason presente ⇒ es un cierre (las aperturas no lo llevan).
+    const isClose = !!t.close_reason;
+    const isBuy = t.action === 'BUY';
+    let label, cls;
+    if (isClose) {
+      label = isBuy ? 'Cierra corto' : 'Cierra largo';
+      cls = 'badge-muted';
+    } else {
+      label = isBuy ? 'Abre largo' : 'Abre corto';
+      cls = isBuy ? 'badge-green' : 'badge-red';
+    }
+    const reasonMap = { stop_loss: 'stop-loss', take_profit: 'take-profit', trailing_stop: 'trailing' };
+    const sub = isClose
+      ? ` <span class="text-muted" style="font-size:11px">· ${reasonMap[t.close_reason] || t.close_reason}</span>`
+      : '';
     const pnl = t.pnl ?? null;
     const pct = t.pnl_pct ?? null;
     return `<tr>
       <td class="text-muted">${fmt.tsDate(t._ts)}</td>
       <td><b>${t.symbol || '—'}</b></td>
-      <td><span class="badge ${cls}">${t.action || '—'}</span></td>
+      <td><span class="badge ${cls}">${label}</span>${sub}</td>
       <td>${t.qty || '—'}</td>
       <td>${fmt.usdPlain(t.price)}</td>
       <td class="text-muted">${t.stop_loss ? fmt.usdPlain(t.stop_loss) : '—'}</td>
