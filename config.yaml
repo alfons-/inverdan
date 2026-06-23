@@ -65,9 +65,11 @@ pushover:
   # Cuenta compartida: enviar solo a los dispositivos de Alfonso (no al iPhone de Diego)
   device: "Iphone_Alfonso,ipadpro129inch3gwi-fi"
 llm_review:
-  enabled: false              # poner true tras añadir ANTHROPIC_API_KEY al .env
+  enabled: true              # poner true tras añadir ANTHROPIC_API_KEY al .env
   model: claude-opus-4-8
   fail_open: true             # si Claude falla/tarda, la operación sigue como hoy
-  timeout: 8.0
+  timeout: 60.0               # Opus 4.8 + web_search ~40s; margen para varianza (Sonnet 4.6 sería ~2x más rápido)
   news_lookback_hours: 24
   max_headlines: 10
+  use_web_search: true        # Claude busca earnings/macro (FOMC/CPI) él mismo
+  web_search_max_uses: 2

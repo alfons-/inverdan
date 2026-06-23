@@ -100,9 +100,11 @@ class LLMReviewSettings(BaseModel):
     model: str = "claude-opus-4-8"
     api_key: str = Field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     fail_open: bool = True          # si el LLM falla/tarda → operar igual (no bloquear el bot)
-    timeout: float = Field(8.0, gt=0)
+    timeout: float = Field(60.0, gt=0)   # Opus 4.8 + web_search (effort=low) ~40s; margen para varianza
     news_lookback_hours: int = Field(24, gt=0)
     max_headlines: int = Field(10, gt=0, le=50)
+    use_web_search: bool = True     # Claude busca earnings/macro con web_search nativo
+    web_search_max_uses: int = Field(2, gt=0, le=10)
 
 
 class DashboardSettings(BaseModel):

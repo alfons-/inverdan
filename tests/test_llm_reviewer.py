@@ -1,5 +1,5 @@
 """Tests de la capa de revisión LLM (signals/llm_reviewer.py). Todo con mocks; no
-toca ni Alpaca ni Anthropic."""
+toca ni Alpaca ni Anthropic. El veredicto llega por el tool `submit_verdict`."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -15,14 +15,16 @@ def _signal(symbol="AAPL", action="BUY"):
     return Signal(symbol=symbol, action=action, confidence=0.7, price=200.0, reasoning="RSI bajo")
 
 
-def _settings(fail_open=True):
+def _settings(fail_open=True, use_web_search=True):
     s = MagicMock()
     s.llm_review.model = "claude-opus-4-8"
     s.llm_review.fail_open = fail_open
-    s.llm_review.timeout = 8.0
+    s.llm_review.timeout = 20.0
     s.llm_review.news_lookback_hours = 24
     s.llm_review.max_headlines = 10
     s.llm_review.api_key = "test"
+    s.llm_review.use_web_search = use_web_search
+    s.llm_review.web_search_max_uses = 3
     return s
 
 
@@ -36,25 +38,36 @@ def _news(headlines=("AAPL sube",), raise_err=False):
     return nc
 
 
-def _anthropic(parsed=None, raise_err=False):
+def _verdict_block(approve, confidence, reason):
+    return SimpleNamespace(type="tool_use", name="submit_verdict",
+                           input={"approve": approve, "confidence": confidence, "reason": reason})
+
+
+def _anthropic(verdict=None, raise_err=False, no_verdict=False):
+    """verdict = (approve, confidence, reason) | None."""
     c = MagicMock()
     if raise_err:
-        c.messages.parse.side_effect = RuntimeError("api down")
+        c.messages.create.side_effect = RuntimeError("api down")
+    elif no_verdict:
+        c.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="no opino")], stop_reason="end_turn")
     else:
-        c.messages.parse.return_value = SimpleNamespace(parsed_output=parsed)
+        a, conf, rsn = verdict
+        c.messages.create.return_value = SimpleNamespace(
+            content=[_verdict_block(a, conf, rsn)], stop_reason="tool_use")
     return c
 
 
 class TestLLMReviewer:
     def test_approve(self):
         r = LLMReviewer(_settings(), news_client=_news(),
-                        anthropic_client=_anthropic(LLMReview(approve=True, confidence=0.9, reason="sin riesgo")))
+                        anthropic_client=_anthropic((True, 0.9, "sin riesgo")))
         ok, reason = r.review(_signal())
         assert ok is True and reason == "sin riesgo"
 
     def test_veto(self):
         r = LLMReviewer(_settings(), news_client=_news(("AAPL presenta resultados mañana",)),
-                        anthropic_client=_anthropic(LLMReview(approve=False, confidence=0.8, reason="earnings inminentes")))
+                        anthropic_client=_anthropic((False, 0.8, "earnings inminentes")))
         ok, reason = r.review(_signal())
         assert ok is False and "earnings" in reason
 
@@ -70,11 +83,23 @@ class TestLLMReviewer:
 
     def test_fail_open_on_news_error(self):
         r = LLMReviewer(_settings(fail_open=True), news_client=_news(raise_err=True),
-                        anthropic_client=_anthropic(LLMReview(approve=True, confidence=1.0, reason="x")))
+                        anthropic_client=_anthropic((True, 1.0, "x")))
         ok, reason = r.review(_signal())
         assert ok is True and "fail-open" in reason
 
-    def test_unparseable_response_respects_fail_mode(self):
-        r = LLMReviewer(_settings(fail_open=False), news_client=_news(), anthropic_client=_anthropic(parsed=None))
+    def test_no_verdict_respects_fail_mode(self):
+        r = LLMReviewer(_settings(fail_open=False), news_client=_news(), anthropic_client=_anthropic(no_verdict=True))
         ok, _ = r.review(_signal())
         assert ok is False
+
+    def test_web_search_tool_included_when_enabled(self):
+        r = LLMReviewer(_settings(use_web_search=True), news_client=_news(),
+                        anthropic_client=_anthropic((True, 0.9, "ok")))
+        names = [t.get("type") or t.get("name") for t in r._tools()]
+        assert any("web_search" in str(n) for n in names) and any("submit_verdict" == n for n in names)
+
+    def test_web_search_tool_absent_when_disabled(self):
+        r = LLMReviewer(_settings(use_web_search=False), news_client=_news(),
+                        anthropic_client=_anthropic((True, 0.9, "ok")))
+        names = [t.get("type") or t.get("name") for t in r._tools()]
+        assert not any("web_search" in str(n) for n in names)
