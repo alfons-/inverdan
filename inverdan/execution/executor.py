@@ -26,12 +26,14 @@ class TradeExecutor:
         risk: RiskManager,
         portfolio: PortfolioTracker,
         event_bus: EventBus,
+        reviewer=None,
     ):
         self._cfg = settings
         self._broker = broker
         self._risk = risk
         self._portfolio = portfolio
         self._bus = event_bus
+        self._reviewer = reviewer   # capa LLM opcional (solo-veto); None = desactivada
         self._rate_limiter = RateLimiter(settings.risk.max_orders_per_minute)
         self._trade_logger = TradeLogger(settings.logs_path)
         self._enabled = threading.Event()
@@ -97,6 +99,15 @@ class TradeExecutor:
         if signal.action == "SELL" and stop_loss <= signal.price:
             self._bus.post(OrderRejectedEvent(symbol=signal.symbol, reason="Stop-loss inválido (short)"))
             return
+
+        # Capa opcional de revisión LLM (SOLO-VETO, por contexto de noticias).
+        # Solo puede bloquear, nunca crear/dimensionar; fail-open por defecto.
+        if self._reviewer is not None:
+            ok, reason = self._reviewer.review(signal)
+            if not ok:
+                logger.info(f"Señal vetada por LLM {signal.symbol}: {reason}")
+                self._bus.post(OrderRejectedEvent(symbol=signal.symbol, reason=f"Veto LLM: {reason}"))
+                return
 
         side = "buy" if signal.action == "BUY" else "sell"
 

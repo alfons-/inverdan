@@ -64,3 +64,10 @@ pushover:
   min_signal_confidence: 1.0   # desactivadas: solo fills y rechazos importantes
   # Cuenta compartida: enviar solo a los dispositivos de Alfonso (no al iPhone de Diego)
   device: "Iphone_Alfonso,ipadpro129inch3gwi-fi"
+llm_review:
+  enabled: false              # poner true tras añadir ANTHROPIC_API_KEY al .env
+  model: claude-opus-4-8
+  fail_open: true             # si Claude falla/tarda, la operación sigue como hoy
+  timeout: 8.0
+  news_lookback_hours: 24
+  max_headlines: 10

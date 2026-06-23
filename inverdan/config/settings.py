@@ -93,6 +93,18 @@ class PushoverSettings(BaseModel):
     device: str = ""
 
 
+class LLMReviewSettings(BaseModel):
+    """Capa opcional: Claude revisa titulares de noticias y puede VETAR (nunca crear)
+    operaciones antes de enviarlas. Desactivada por defecto; requiere ANTHROPIC_API_KEY."""
+    enabled: bool = False
+    model: str = "claude-opus-4-8"
+    api_key: str = Field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
+    fail_open: bool = True          # si el LLM falla/tarda → operar igual (no bloquear el bot)
+    timeout: float = Field(8.0, gt=0)
+    news_lookback_hours: int = Field(24, gt=0)
+    max_headlines: int = Field(10, gt=0, le=50)
+
+
 class DashboardSettings(BaseModel):
     refresh_rate: float = 1.0
     max_log_lines: int = 50
@@ -124,6 +136,7 @@ class Settings(BaseModel):
     dashboard: DashboardSettings = DashboardSettings()
     training: TrainingSettings = TrainingSettings()
     pushover: PushoverSettings = PushoverSettings()
+    llm_review: LLMReviewSettings = LLMReviewSettings()
 
     @property
     def root_path(self) -> Path:

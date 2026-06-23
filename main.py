@@ -165,8 +165,26 @@ def main():
         max_logs=settings.dashboard.max_log_lines,
     )
 
+    # Capa opcional de revisión LLM (veto por noticias). Desactivada salvo config.
+    llm_reviewer = None
+    if settings.llm_review.enabled:
+        if not settings.llm_review.api_key:
+            logger.warning(
+                "llm_review.enabled=true pero falta ANTHROPIC_API_KEY en .env; "
+                "se omite la capa LLM."
+            )
+        else:
+            from inverdan.signals.llm_reviewer import LLMReviewer
+            llm_reviewer = LLMReviewer(settings)
+            logger.info(
+                f"Revisión LLM activada (modelo {settings.llm_review.model}, "
+                f"fail_open={settings.llm_review.fail_open})."
+            )
+
     # Ejecutor de operaciones
-    executor = TradeExecutor(settings, broker, risk_manager, portfolio_tracker, event_bus)
+    executor = TradeExecutor(
+        settings, broker, risk_manager, portfolio_tracker, event_bus, reviewer=llm_reviewer
+    )
     if not args.auto_trade:
         executor.pause()
         logger.info("Auto-trade DESACTIVADO. Use --auto-trade para activar.")
