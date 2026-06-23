@@ -304,6 +304,7 @@ def api_status():
         "market": {"open": market_open, "time": market_time},
         "portfolio": state.get("portfolio", {}),
         "risk": state.get("risk", {}),
+        "llm_review": state.get("llm_review", {}),
         "auto_trade": state.get("auto_trade", False),
         "server_time": datetime.utcnow().isoformat(),
     })

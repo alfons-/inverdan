@@ -259,6 +259,7 @@ async function fetchStatus() {
     updateBotStatus(data.bot);
     updateMarketBadge(data.market);
     updateSystemMetrics(data.system);
+    updateLlmBadge(data.llm_review);
   } catch (e) {
     // silencioso
   } finally {
@@ -330,6 +331,20 @@ function updateBotStatus(bot) {
     $('botCircuit').innerHTML = cb
       ? '<span class="badge badge-red">ABIERTO</span>'
       : '<span class="badge badge-green">OK</span>';
+  }
+}
+
+function updateLlmBadge(llm) {
+  const el = $('llmBadge');
+  if (!el) return;
+  if (llm && llm.enabled) {
+    el.className = 'llm-badge active';
+    el.innerHTML = '🛡️<span class="llm-badge-txt"> Veto LLM</span>';
+    el.title = `Capa de veto LLM activa · ${llm.model || 'Claude'}${llm.web_search ? ' · web_search' : ''}`;
+  } else {
+    el.className = 'llm-badge off';
+    el.innerHTML = '🛡️<span class="llm-badge-txt"> Veto LLM: off</span>';
+    el.title = 'Capa de veto LLM desactivada';
   }
 }
 

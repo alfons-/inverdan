@@ -234,6 +234,33 @@ html, body {
 }
 .refresh-indicator.active { background: var(--accent); }
 
+/* Badge de la capa de veto LLM en la topbar */
+.llm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  cursor: default;
+}
+.llm-badge.active {
+  color: var(--green);
+  background: var(--green-dim);
+  border-color: var(--green);
+}
+.llm-badge.off {
+  color: var(--text-muted);
+  background: rgba(74, 80, 104, 0.12);
+  border-color: var(--text-muted);
+}
+/* En móvil deja solo el escudo (sin texto) para no saturar la topbar */
+@media (max-width: 720px) { .llm-badge-txt { display: none; } .llm-badge { padding: 4px 8px; } }
+
 /* ── MAIN CONTENT ───────────────────────────────────── */
 .main-content {
   margin-left: var(--sidebar-w);

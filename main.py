@@ -181,6 +181,14 @@ def main():
                 f"fail_open={settings.llm_review.fail_open})."
             )
 
+    # Estado real de la capa LLM para el dashboard: refleja si está ACTIVA de
+    # verdad (no solo el flag de config: sin API key queda inactiva).
+    llm_state = {
+        "enabled": llm_reviewer is not None,
+        "model": settings.llm_review.model if llm_reviewer is not None else None,
+        "web_search": settings.llm_review.use_web_search if llm_reviewer is not None else False,
+    }
+
     # Ejecutor de operaciones
     executor = TradeExecutor(
         settings, broker, risk_manager, portfolio_tracker, event_bus, reviewer=llm_reviewer
@@ -493,6 +501,7 @@ def main():
                         "daily_pnl": round(risk_manager.daily_pnl, 2),
                         "open_positions": risk_manager.open_positions_count,
                     },
+                    "llm_review": llm_state,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 # Leer auto_trade del fichero por si el dashboard lo cambió

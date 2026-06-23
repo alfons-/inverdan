@@ -84,11 +84,21 @@ class PushoverNotifier:
     )
 
     def _on_order_rejected(self, event: OrderRejectedEvent) -> None:
-        if any(event.reason.startswith(s) for s in self._SILENT_REJECTIONS):
+        reason = event.reason
+        # Veto de la capa LLM: aviso propio y con prioridad alta (es relevante).
+        if reason.startswith("Veto LLM"):
+            motivo = reason.split(":", 1)[1].strip() if ":" in reason else reason
+            self._send(
+                title=f"🚫 Veto LLM — {event.symbol}",
+                message=f"La revisión LLM vetó esta operación.\n{motivo}",
+                priority=1,
+            )
+            return
+        if any(reason.startswith(s) for s in self._SILENT_REJECTIONS):
             return
         self._send(
             title=f"⚠️ Orden rechazada — {event.symbol}",
-            message=event.reason,
+            message=reason,
             priority=0,
         )
 
@@ -107,7 +117,9 @@ class PushoverNotifier:
             data = {
                 "token": self._token,
                 "user": self._user,
-                "title": title,
+                # Prefijo de marca: en la cuenta compartida deja claro que el aviso
+                # es de Inverdan (y no de otra app/usuario de la misma cuenta).
+                "title": f"Inverdan · {title}",
                 "message": message,
                 "priority": priority,
             }
