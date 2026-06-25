@@ -48,7 +48,10 @@ class IndicatorSettings(BaseModel):
 
 class MLSettings(BaseModel):
     model_type: str = "random_forest"
-    confidence_threshold: float = Field(0.65, ge=0.5, le=1.0)
+    # 0,65 era inalcanzable para un RF de 3 clases en velas de 1 min (su confianza
+    # tope ronda 0,42) → el ML no contaba nunca. A 0,40 participa como confirmación/
+    # veto de las reglas (no inicia operaciones por sí solo; ver aggregator).
+    confidence_threshold: float = Field(0.40, ge=0.33, le=1.0)
     feature_lookback: int = 20
     model_path: str = "models/"
     min_bars_required: int = 50
@@ -81,6 +84,10 @@ class RiskSettings(BaseModel):
     # ±trend_buffer_pct del SMA, no se opera (tendencia poco clara), para evitar el
     # whipsaw de dirección en valores laterales (p. ej. NVDA oscilando sobre su SMA).
     trend_buffer_pct: float = Field(0.01, ge=0, le=0.1)
+    # Techo de ADX para permitir entrar. Reglas de reversión a la media: con ADX
+    # muy alto (tendencia violenta) las entradas a contracorriente "cazan cuchillos"
+    # y el 100% de esas entradas perdía. Por encima del techo no se entra. 0 = off.
+    max_adx: float = Field(0.0, ge=0, le=100)
 
 
 class PushoverSettings(BaseModel):

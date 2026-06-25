@@ -59,8 +59,9 @@ class SignalAggregator:
         # Capa 1: Reglas técnicas (con filtro de tendencia mayor del timeframe superior)
         daily_trend = self._trend_provider.get(symbol) if self._trend_provider else None
         trend_buffer = getattr(self._cfg.risk, "trend_buffer_pct", 0.0)
+        max_adx = getattr(self._cfg.risk, "max_adx", 0.0)
         rule_signal, rule_reasons, rule_strength = rule_based_signal(
-            snap, daily_trend=daily_trend, trend_buffer=trend_buffer
+            snap, daily_trend=daily_trend, trend_buffer=trend_buffer, max_adx=max_adx
         )
 
         # Capa 2: Random Forest
@@ -141,10 +142,11 @@ class SignalAggregator:
             reasons.append(f"Reglas y ML de acuerdo ({ml})")
             return ml, combined, reasons
 
-        # ML activo pero reglas en HOLD
+        # ML activo pero reglas en HOLD → el ML NO inicia operaciones por sí solo;
+        # solo confirma o veta señales de las reglas. Su confianza en 3 clases es
+        # demasiado baja (≈0.4) para fiarse de una entrada que proponga él solo.
         if ml_active and rule == "HOLD":
-            reasons.append(f"ML {ml} (conf={ml_conf:.2f}), reglas neutras")
-            return ml, ml_conf * 0.8, reasons
+            return "HOLD", 0.0, []
 
         # Reglas activas pero ML en HOLD o baja confianza
         if rule != "HOLD" and (ml == "HOLD" or ml_conf < threshold):

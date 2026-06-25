@@ -111,6 +111,28 @@ class TestRuleBasedSignal:
         assert action == "BUY"
         assert any("Volumen" in r for r in reasons)
 
+    # ── Filtro de ADX (régimen) ───────────────────────────────────────────────
+    def test_high_adx_vetoes_entry(self):
+        # Señal de venta válida pero con ADX por encima del techo → vetada
+        snap = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003,
+                         price_vs_sma200=-0.07, adx=50.0)
+        action, reasons, _ = rule_based_signal(snap, max_adx=40.0)
+        assert action == "HOLD"
+        assert any("ADX" in r for r in reasons)
+
+    def test_adx_filter_disabled_by_default(self):
+        # Sin max_adx (0 = off) la misma señal con ADX alto SÍ se permite
+        snap = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003,
+                         price_vs_sma200=-0.07, adx=50.0)
+        action, _, _ = rule_based_signal(snap)
+        assert action == "SELL"
+
+    def test_adx_below_ceiling_allows_entry(self):
+        snap = make_snap(rsi=75.0, bb_pct=0.95, ema_crossover=-0.003,
+                         price_vs_sma200=-0.07, adx=20.0)
+        action, _, _ = rule_based_signal(snap, max_adx=40.0)
+        assert action == "SELL"
+
 
 class TestSignalAggregator:
     def test_contradictory_signals_hold(self):
@@ -144,3 +166,19 @@ class TestSignalAggregator:
         _, weak, _ = SignalAggregator._aggregate("BUY", 4, "HOLD", 0.0, 0.65)
         _, strong, _ = SignalAggregator._aggregate("BUY", 8, "HOLD", 0.0, 0.65)
         assert strong > weak
+
+    # ── ML como confirmación/veto (umbral 0,40), nunca iniciador ──────────────
+    def test_ml_does_not_initiate_when_rules_hold(self):
+        # Reglas en HOLD y ML activo: el ML NO debe abrir operación por sí solo
+        action, conf, _ = SignalAggregator._aggregate("HOLD", 0, "BUY", 0.55, 0.40)
+        assert action == "HOLD"
+
+    def test_ml_vetoes_when_disagrees_at_new_threshold(self):
+        # Con umbral 0,40 un ML que contradice a las reglas (conf>=0,40) las veta
+        action, _, _ = SignalAggregator._aggregate("BUY", 5, "SELL", 0.45, 0.40)
+        assert action == "HOLD"
+
+    def test_ml_confirms_agreement_at_new_threshold(self):
+        action, conf, _ = SignalAggregator._aggregate("BUY", 5, "BUY", 0.45, 0.40)
+        assert action == "BUY"
+        assert conf > 0.6

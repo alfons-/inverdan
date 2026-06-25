@@ -8,6 +8,7 @@ def rule_based_signal(
     snap: IndicatorSnapshot,
     daily_trend: float | None = None,
     trend_buffer: float = 0.0,
+    max_adx: float = 0.0,
 ) -> tuple[str, list[str], int]:
     """
     Aplica reglas técnicas clásicas y retorna (señal, razones, fuerza).
@@ -115,6 +116,15 @@ def rule_based_signal(
         return "HOLD", reasons, 0
     if action == "BUY" and major_trend < trend_buffer:
         reasons.append("Veto: largo bloqueado (tendencia mayor no alcista)")
+        return "HOLD", reasons, 0
+
+    # ---- Filtro de ADX (régimen) ----
+    # Estas reglas son de reversión a la media. Con ADX muy alto (tendencia
+    # violenta), las entradas a contracorriente "cazan cuchillos": en el histórico,
+    # el 100% de las entradas con ADX alto perdía (cluster de ~-500). Si el ADX
+    # supera el techo, no se entra. max_adx=0 desactiva el filtro.
+    if max_adx > 0 and snap.adx is not None and snap.adx > max_adx:
+        reasons.append(f"Veto: ADX {snap.adx:.0f} > {max_adx:.0f} (tendencia demasiado fuerte)")
         return "HOLD", reasons, 0
 
     return action, reasons, strength

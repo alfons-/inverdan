@@ -20,7 +20,7 @@ indicators:
   stoch_d: 3
   stoch_k: 14
 ml:
-  confidence_threshold: 0.65
+  confidence_threshold: 0.40   # 0,65 era inalcanzable para el RF de 3 clases → ML no contaba; a 0,40 confirma/veta
   feature_lookback: 20
   min_bars_required: 50
   model_path: models/
@@ -40,6 +40,7 @@ risk:
   trend_timeframe: "1Day"
   trend_sma_period: 50
   trend_buffer_pct: 0.01       # banda neutra ±1% del SMA: no operar tendencia plana (anti-whipsaw)
+  max_adx: 40                  # no entrar con ADX>40: tendencia demasiado fuerte (cazar cuchillos = 100% perdía)
 symbols:
 - AAPL
 - NVDA
