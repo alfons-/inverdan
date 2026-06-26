@@ -36,6 +36,10 @@ class OrderFilledEvent:
     order_id: str
     stop_price: float
     take_profit_price: float
+    is_close: bool = False           # False = apertura, True = cierre
+    pnl: float | None = None         # resultado realizado (solo en cierres)
+    position_side: str = ""          # "long" | "short" (dirección de la POSICIÓN)
+    close_reason: str = ""           # stop_loss | take_profit | trailing_stop (cierres)
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 

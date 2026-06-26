@@ -145,6 +145,12 @@ class AlpacaTradeStream:
                     order_id=order_id,
                     stop_price=0.0,
                     take_profit_price=0.0,
+                    is_close=True,                                       # el trade_stream solo CIERRA
+                    pnl=pnl,
+                    # la orden de cierre es opuesta a la posición: BUY cubre un corto,
+                    # SELL liquida un largo
+                    position_side="short" if order_side == "buy" else "long",
+                    close_reason=close_reason,
                 ))
 
         except Exception as e:

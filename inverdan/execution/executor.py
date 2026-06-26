@@ -148,6 +148,8 @@ class TradeExecutor:
                 order_id=str(order.id),
                 stop_price=stop_loss,
                 take_profit_price=take_profit,
+                is_close=False,                                   # el executor solo ABRE
+                position_side="long" if side == "buy" else "short",
             )
             self._bus.post(filled_event)
 

@@ -47,31 +47,40 @@ class PushoverNotifier:
             priority=0,
         )
 
-    def _on_order_filled(self, event: OrderFilledEvent) -> None:
-        is_buy = event.side.upper() == "BUY"
-        # Los cierres automáticos (stop/TP de Alpaca) llegan con stop_price=0
-        auto_close = not is_buy and event.stop_price == 0.0
+    # Traducción del motivo de cierre para el aviso
+    _CLOSE_REASON_ES = {
+        "stop_loss": "stop-loss",
+        "take_profit": "take-profit",
+        "trailing_stop": "trailing stop",
+    }
 
-        if is_buy:
-            title = f"🟢 Posición abierta — {event.symbol}"
-            message = (
-                f"Compra {event.shares} acciones @ ${event.fill_price:.2f}\n"
-                f"Stop: ${event.stop_price:.2f}  |  TP: ${event.take_profit_price:.2f}"
-            )
-        elif auto_close:
-            title = f"🔔 Cierre automático — {event.symbol}"
-            message = (
-                f"Venta {event.shares} acciones @ ${event.fill_price:.2f}\n"
-                f"(Stop-loss o Take-profit alcanzado)"
+    def _on_order_filled(self, event: OrderFilledEvent) -> None:
+        # Distingue abrir/cerrar y largo/corto a partir de los campos del evento
+        # (el side de la orden NO basta: cubrir un corto es un BUY).
+        lado = "largo" if event.position_side == "long" else "corto"
+
+        if event.is_close:
+            pnl = event.pnl or 0.0
+            icon = "🟢" if pnl >= 0 else "🔴"
+            motivo = self._CLOSE_REASON_ES.get(event.close_reason, event.close_reason or "cierre")
+            self._send(
+                title=f"{icon} Cierra {lado} — {event.symbol}",
+                message=(
+                    f"Cierra {event.shares} @ ${event.fill_price:.2f}\n"
+                    f"Resultado: {pnl:+.2f} $  ({motivo})"
+                ),
+                priority=1,
             )
         else:
-            title = f"🔴 Operación ejecutada — {event.symbol}"
-            message = (
-                f"Venta {event.shares} acciones @ ${event.fill_price:.2f}\n"
-                f"Stop: ${event.stop_price:.2f}  |  TP: ${event.take_profit_price:.2f}"
+            icon = "📈" if event.position_side == "long" else "📉"
+            self._send(
+                title=f"{icon} Abre {lado} — {event.symbol}",
+                message=(
+                    f"{event.shares} acciones @ ${event.fill_price:.2f}\n"
+                    f"Stop: ${event.stop_price:.2f}  |  TP: ${event.take_profit_price:.2f}"
+                ),
+                priority=1,
             )
-
-        self._send(title=title, message=message, priority=1)
 
     # Rechazos rutinarios que no necesitan notificación
     _SILENT_REJECTIONS = (
