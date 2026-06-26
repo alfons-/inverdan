@@ -41,6 +41,7 @@ risk:
   trend_sma_period: 50
   trend_buffer_pct: 0.01       # banda neutra ±1% del SMA: no operar tendencia plana (anti-whipsaw)
   max_adx: 40                  # no entrar con ADX>40: tendencia demasiado fuerte (cazar cuchillos = 100% perdía)
+  min_confidence: 0.5          # confianza mínima (ahora refleja calidad ADX/volumen) para operar
 symbols:
 - AAPL
 - NVDA

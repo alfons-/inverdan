@@ -88,6 +88,10 @@ class RiskSettings(BaseModel):
     # muy alto (tendencia violenta) las entradas a contracorriente "cazan cuchillos"
     # y el 100% de esas entradas perdía. Por encima del techo no se entra. 0 = off.
     max_adx: float = Field(0.0, ge=0, le=100)
+    # Confianza mínima para operar. La confianza ahora refleja la CALIDAD del contexto
+    # (ADX bajo + volumen alto, lo que predice ganadoras), no solo el nº de reglas, así
+    # que este filtro veta los trades flojos. Antes estaba fijo en 0,5 en el código.
+    min_confidence: float = Field(0.5, ge=0, le=1)
 
 
 class PushoverSettings(BaseModel):

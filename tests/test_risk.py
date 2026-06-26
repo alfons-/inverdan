@@ -22,6 +22,7 @@ def make_settings():
     cfg.risk.max_consecutive_losses = 5
     cfg.risk.max_orders_per_minute = 3
     cfg.risk.min_stock_price = 5.0
+    cfg.risk.min_confidence = 0.5
     return cfg
 
 

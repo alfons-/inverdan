@@ -182,3 +182,20 @@ class TestSignalAggregator:
         action, conf, _ = SignalAggregator._aggregate("BUY", 5, "BUY", 0.45, 0.40)
         assert action == "BUY"
         assert conf > 0.6
+
+    # ── Multiplicador de calidad (ADX/volumen) sobre la confianza ─────────────
+    def test_quality_penalizes_high_adx(self):
+        q_low = SignalAggregator._quality_multiplier(make_snap(adx=15.0, volume_ratio=1.5))
+        q_high = SignalAggregator._quality_multiplier(make_snap(adx=38.0, volume_ratio=1.5))
+        assert q_high < q_low
+        assert q_high < 1.0          # ADX alto penaliza la confianza
+
+    def test_quality_rewards_volume(self):
+        q_lo = SignalAggregator._quality_multiplier(make_snap(adx=20.0, volume_ratio=1.0))
+        q_hi = SignalAggregator._quality_multiplier(make_snap(adx=20.0, volume_ratio=2.5))
+        assert q_hi > q_lo           # más volumen, más confianza
+
+    def test_quality_neutral_around_baseline(self):
+        # ADX 20 y volumen 1.5x → factor ~1.0 (no altera la confianza)
+        q = SignalAggregator._quality_multiplier(make_snap(adx=20.0, volume_ratio=1.5))
+        assert 0.97 <= q <= 1.03

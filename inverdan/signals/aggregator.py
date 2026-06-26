@@ -74,6 +74,16 @@ class SignalAggregator:
             rule_signal, rule_strength, ml_action, ml_conf, threshold
         )
 
+        # Ajuste por CALIDAD del contexto: el nº de reglas (rule_strength) no
+        # discriminaba ganadoras de perdedoras (μ 0.59 vs 0.58). Lo que sí predice
+        # es ADX bajo + volumen alto (ver análisis de operativa). Modulamos la
+        # confianza con eso para que el filtro min_confidence (risk) vete trades flojos.
+        if final_action != "HOLD":
+            q = self._quality_multiplier(snap)
+            final_conf = round(max(0.30, min(0.95, final_conf * q)), 2)
+            adx_txt = f"{snap.adx:.0f}" if snap.adx is not None else "?"
+            extra_reasons.append(f"calidad x{q:.2f} (ADX {adx_txt}, vol x{snap.volume_ratio:.1f})")
+
         all_reasons = rule_reasons + extra_reasons
         reasoning = " | ".join(all_reasons[:5]) if all_reasons else "Sin señal clara"
 
@@ -114,6 +124,21 @@ class SignalAggregator:
         distinguir señales fuertes de marginales.
         """
         return round(min(0.5 + 0.05 * (strength - 3), 0.90), 2)
+
+    @staticmethod
+    def _quality_multiplier(snap) -> float:
+        """Factor de calidad del contexto para modular la confianza. Del análisis de
+        operativa: las ganadoras entraban con ADX bajo (~18) y volumen alto (~2x); las
+        perdedoras con ADX alto (~35) y volumen bajo (~1.5x).
+          - ADX: penaliza tendencias fuertes (la reversión a la media falla ahí).
+            Neutro ~20, baja hasta x0.6 hacia ADX 40.
+          - Volumen: premia la confirmación. Neutro 1.5x, hasta x1.15 con volumen alto.
+        """
+        adx = snap.adx if snap.adx is not None else 20.0
+        vol = snap.volume_ratio if snap.volume_ratio is not None else 1.0
+        adx_adj = max(0.6, min(1.1, 1.0 - (adx - 20.0) * 0.02))
+        vol_adj = max(0.85, min(1.15, 1.0 + (vol - 1.5) * 0.15))
+        return round(adx_adj * vol_adj, 3)
 
     @classmethod
     def _aggregate(

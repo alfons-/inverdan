@@ -64,8 +64,9 @@ class RiskManager:
             if signal.price < cfg.min_stock_price:
                 return False, f"Precio ${signal.price:.2f} < mínimo ${cfg.min_stock_price}"
 
-            # Confianza mínima
-            if signal.confidence < 0.5:
+            # Confianza mínima (ahora la confianza refleja calidad ADX/volumen, así
+            # que este filtro veta de verdad los trades flojos)
+            if signal.confidence < cfg.min_confidence:
                 return False, f"Confianza baja ({signal.confidence:.2f})"
 
             # Pérdida diaria máxima
