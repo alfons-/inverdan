@@ -27,6 +27,16 @@ from pathlib import Path
 warnings.filterwarnings("ignore", message=r".*sklearn\.utils\.parallel\.delayed.*")
 warnings.filterwarnings("ignore", message=r"X does not have valid feature names.*")
 
+# Silenciar el spam de reconexión del websocket de Alpaca. Cuando se cae la red
+# (p. ej. de noche con el Mac dormido), asyncio vuelca el traceback COMPLETO de
+# socket.gaierror en CADA reintento de DNS y, sin rotación de stderr en launchd,
+# bot_stderr.log llegó a 253 MB. alpaca-py ya reconecta solo; basta su propia línea
+# "restarting connection". Subimos el nivel del logger 'asyncio' (por donde salen
+# esos tracebacks de tarea no controlada, a ERROR) para descartarlos.
+import logging as _logging
+_logging.getLogger("asyncio").setLevel(_logging.CRITICAL)
+_logging.getLogger("websockets").setLevel(_logging.ERROR)
+
 # Añadir el directorio raíz al path
 sys.path.insert(0, str(Path(__file__).parent))
 
