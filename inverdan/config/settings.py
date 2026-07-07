@@ -70,6 +70,11 @@ class RiskSettings(BaseModel):
     # al ganador (el stop sigue al precio), en vez del stop estático que se
     # quedaba clavado en la entrada sin proteger el beneficio.
     trailing_stop_pct: float = Field(3.0, gt=0, le=20)
+    # Trailing HOLGADO durante la ventana de apertura (y con mercado cerrado, para
+    # amanecer ya holgado en la campana): el ruido de los primeros minutos disparaba
+    # los trailing del 3% (4 cierres en la campana en 6 sesiones). 0 = desactivado.
+    trailing_stop_open_pct: float = Field(5.0, ge=0, le=20)
+    trailing_open_window_min: int = Field(30, gt=0, le=120)
     max_daily_loss_pct: float = Field(0.05, gt=0, le=1.0)
     max_consecutive_losses: int = 5
     max_orders_per_minute: int = 3

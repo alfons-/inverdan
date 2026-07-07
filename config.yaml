@@ -37,6 +37,8 @@ risk:
   take_profit_atr_multiplier: 4
   min_stop_pct: 0.025          # suelo del stop (antes 1% fijo, demasiado fino)
   trailing_stop_pct: 3.0       # trailing stop del protector (asegura ganancias)
+  trailing_stop_open_pct: 5.0  # trailing holgado en la apertura/overnight: aguanta el ruido de la campana
+  trailing_open_window_min: 30 # minutos tras la apertura con el trailing holgado
   trend_timeframe: "1Day"
   trend_sma_period: 50
   trend_buffer_pct: 0.01       # banda neutra ±1% del SMA: no operar tendencia plana (anti-whipsaw)

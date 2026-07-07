@@ -385,12 +385,16 @@ def main():
                 if not sym:
                     continue
                 ot = str(getattr(x, "order_type", None) or getattr(x, "type", "")).lower()
-                d = info.setdefault(sym, {"trailing_qty": 0, "stop": False, "tp": False})
+                d = info.setdefault(sym, {"trailing_qty": 0, "stop": False, "tp": False,
+                                          "trail_pct": None})
                 if "trailing" in ot:
                     try:
                         qty = int(float(getattr(x, "qty", 0) or 0))
                         filled = int(float(getattr(x, "filled_qty", 0) or 0))
                         d["trailing_qty"] += max(qty - filled, 0)
+                        tp_raw = getattr(x, "trail_percent", None)
+                        if tp_raw is not None:
+                            d["trail_pct"] = float(tp_raw)
                     except (TypeError, ValueError):
                         pass
                 elif "stop" in ot:
@@ -411,28 +415,56 @@ def main():
         cuando el precio retrocede trail% desde su mejor nivel.
         """
         time.sleep(15)   # Dejar al bot arrancar completamente
-        trail = settings.risk.trailing_stop_pct
+
+        def _desired_trail() -> float:
+            """Trailing % objetivo según el momento del día. Holgado
+            (trailing_stop_open_pct) en la ventana de apertura Y con mercado
+            cerrado — así las posiciones amanecen ya holgadas en la campana,
+            donde el ruido disparaba los trailing normales. Normal el resto."""
+            open_pct = getattr(settings.risk, "trailing_stop_open_pct", 0.0) or 0.0
+            if open_pct <= 0:
+                return settings.risk.trailing_stop_pct
+            try:
+                from inverdan.utils.market_hours import is_market_open, now_et
+                if not is_market_open():
+                    return open_pct
+                n = now_et()
+                mins = (n.hour - 9) * 60 + (n.minute - 30)   # minutos desde las 9:30 ET
+                window = getattr(settings.risk, "trailing_open_window_min", 30)
+                return open_pct if 0 <= mins < window else settings.risk.trailing_stop_pct
+            except Exception:
+                return settings.risk.trailing_stop_pct
 
         while True:
             try:
+                trail = _desired_trail()
                 snap = portfolio_tracker.get_snapshot()
                 if snap.positions:
                     orders = _orders_by_symbol()
                     for pos in snap.positions:
                         o = orders.get(pos.symbol, {})
+                        # Bracket completo SL+TP: se respeta, no se toca.
+                        if o.get("stop") and o.get("tp"):
+                            continue
                         tq = o.get("trailing_qty", 0)
-                        # Ya bien protegida: trailing que cubre TODA la posición,
-                        # o bracket completo SL+TP.
-                        if tq == pos.qty or (o.get("stop") and o.get("tp")):
+                        tpct = o.get("trail_pct")
+                        # Ya bien protegida: trailing que cubre TODA la posición
+                        # y con el % objetivo de este momento del día.
+                        if tq == pos.qty and tpct is not None and abs(tpct - trail) < 0.01:
                             continue
                         # Trailing con cantidad equivocada (fill parcial en la
-                        # entrada al colocarlo) o stop/TP suelto → cancelar todo
-                        # para liberar las acciones y reponer por la cantidad real.
+                        # entrada), % desactualizado (cambio de ventana) o stop/TP
+                        # suelto → cancelar todo y reponer por cantidad y % reales.
                         if tq or o.get("stop") or o.get("tp"):
-                            if tq:
+                            if tq and tq != pos.qty:
                                 logger.warning(
                                     f"Trailing de {pos.symbol} cubre {tq}/{pos.qty}: "
                                     f"se repone por la cantidad completa"
+                                )
+                            elif tq and tpct is not None:
+                                logger.info(
+                                    f"Trailing de {pos.symbol} al {tpct:.1f}% → {trail:.1f}% "
+                                    f"(ventana de apertura)"
                                 )
                             broker.cancel_orders_for_symbol(pos.symbol)
                             time.sleep(1)   # dar tiempo a Alpaca a soltar las acciones
