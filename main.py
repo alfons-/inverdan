@@ -371,7 +371,13 @@ def main():
 
     # ── Protector de posiciones: trailing stop que asegura la ganancia ───────
     def _orders_by_symbol() -> dict:
-        """{symbol: {'trailing','stop','tp'}} a partir de las órdenes reales."""
+        """{symbol: {'trailing_qty','stop','tp'}} a partir de las órdenes reales.
+
+        trailing_qty es la cantidad RESTANTE (qty - filled) de los trailing stops
+        activos: no basta con saber que existe uno, hay que compararlo con la
+        posición (un fill parcial en la entrada dejaba trailing de 5 sobre
+        posición de 10 → la mitad sin proteger, caso MSFT 1-jul).
+        """
         info: dict = {}
         for o in broker.get_open_orders():
             for x in (o, *(getattr(o, "legs", None) or [])):
@@ -379,9 +385,14 @@ def main():
                 if not sym:
                     continue
                 ot = str(getattr(x, "order_type", None) or getattr(x, "type", "")).lower()
-                d = info.setdefault(sym, {"trailing": False, "stop": False, "tp": False})
+                d = info.setdefault(sym, {"trailing_qty": 0, "stop": False, "tp": False})
                 if "trailing" in ot:
-                    d["trailing"] = True
+                    try:
+                        qty = int(float(getattr(x, "qty", 0) or 0))
+                        filled = int(float(getattr(x, "filled_qty", 0) or 0))
+                        d["trailing_qty"] += max(qty - filled, 0)
+                    except (TypeError, ValueError):
+                        pass
                 elif "stop" in ot:
                     d["stop"] = True
                 elif "limit" in ot:
@@ -409,12 +420,20 @@ def main():
                     orders = _orders_by_symbol()
                     for pos in snap.positions:
                         o = orders.get(pos.symbol, {})
-                        # Ya bien protegida: trailing stop, o bracket completo SL+TP.
-                        if o.get("trailing") or (o.get("stop") and o.get("tp")):
+                        tq = o.get("trailing_qty", 0)
+                        # Ya bien protegida: trailing que cubre TODA la posición,
+                        # o bracket completo SL+TP.
+                        if tq == pos.qty or (o.get("stop") and o.get("tp")):
                             continue
-                        # Stop o TP suelto (bracket incompleto) → cancelar para
-                        # liberar las acciones antes de colocar el trailing.
-                        if o.get("stop") or o.get("tp"):
+                        # Trailing con cantidad equivocada (fill parcial en la
+                        # entrada al colocarlo) o stop/TP suelto → cancelar todo
+                        # para liberar las acciones y reponer por la cantidad real.
+                        if tq or o.get("stop") or o.get("tp"):
+                            if tq:
+                                logger.warning(
+                                    f"Trailing de {pos.symbol} cubre {tq}/{pos.qty}: "
+                                    f"se repone por la cantidad completa"
+                                )
                             broker.cancel_orders_for_symbol(pos.symbol)
                             time.sleep(1)   # dar tiempo a Alpaca a soltar las acciones
                         side = "buy" if pos.side == "short" else "sell"
