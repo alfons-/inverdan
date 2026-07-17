@@ -23,6 +23,8 @@ def make_settings():
     cfg.risk.max_orders_per_minute = 3
     cfg.risk.min_stock_price = 5.0
     cfg.risk.min_confidence = 0.5
+    cfg.risk.symbol_cooldown_losses = 2
+    cfg.risk.symbol_cooldown_days = 5.0
     return cfg
 
 
@@ -176,3 +178,51 @@ class TestRiskManager:
         self.rm.record_fill("X", "buy", 100.0, 2)
         self.rm.record_fill("X", "sell", 105.0, 2)       # ganancia
         assert self.rm._consecutive_losses == 0
+
+    # ── Cooldown por símbolo ──────────────────────────────────────────────────
+    def _lose_once(self, symbol, side="sell"):
+        """Abre y cierra en pérdida una posición del símbolo (corto por defecto)."""
+        if side == "sell":   # corto que pierde: recomprar más caro
+            self.rm.record_fill(symbol, "sell", 100.0, 5)
+            self.rm.record_fill(symbol, "buy", 103.0, 5)
+        else:                # largo que pierde: vender más barato
+            self.rm.record_fill(symbol, "buy", 100.0, 5)
+            self.rm.record_fill(symbol, "sell", 97.0, 5)
+
+    def test_cooldown_blocks_symbol_after_consecutive_losses(self):
+        self._lose_once("NVDA")
+        ok, _ = self.rm.approve(make_signal(symbol="NVDA", action="SELL"), 100_000)
+        assert ok is True                     # 1 pérdida: aún se puede operar
+        self._lose_once("NVDA")               # 2ª pérdida → cooldown
+        ok, reason = self.rm.approve(make_signal(symbol="NVDA", action="SELL"), 100_000)
+        assert ok is False and "Cooldown" in reason
+        # Bloquea AMBOS lados (el whipsaw pierde en las dos direcciones)
+        ok, reason = self.rm.approve(make_signal(symbol="NVDA", action="BUY"), 100_000)
+        assert ok is False and "Cooldown" in reason
+        # Otros símbolos no se ven afectados
+        ok, _ = self.rm.approve(make_signal(symbol="AAPL"), 100_000)
+        assert ok is True
+
+    def test_cooldown_win_resets_symbol_streak(self):
+        self._lose_once("MSFT")
+        self.rm.record_fill("MSFT", "buy", 100.0, 5)
+        self.rm.record_fill("MSFT", "sell", 105.0, 5)    # ganancia: resetea racha
+        self._lose_once("MSFT")                          # pérdida (racha=1, no 2)
+        ok, _ = self.rm.approve(make_signal(symbol="MSFT"), 100_000)
+        assert ok is True
+
+    def test_cooldown_expires(self):
+        from datetime import datetime, timedelta, timezone
+        self._lose_once("GLD"); self._lose_once("GLD")
+        ok, _ = self.rm.approve(make_signal(symbol="GLD"), 100_000)
+        assert ok is False
+        # Forzar expiración: el bloqueo quedó en el pasado
+        self.rm._symbol_cooldown_until["GLD"] = datetime.now(timezone.utc) - timedelta(minutes=1)
+        ok, _ = self.rm.approve(make_signal(symbol="GLD"), 100_000)
+        assert ok is True
+
+    def test_cooldown_disabled_with_zero(self):
+        self.rm._cfg.symbol_cooldown_losses = 0
+        self._lose_once("SPY"); self._lose_once("SPY"); self._lose_once("SPY")
+        ok, _ = self.rm.approve(make_signal(symbol="SPY"), 100_000)
+        assert ok is True

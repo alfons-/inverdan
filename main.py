@@ -561,6 +561,7 @@ def main():
                         "circuit_open": risk_manager.circuit_open,
                         "daily_pnl": round(risk_manager.daily_pnl, 2),
                         "open_positions": risk_manager.open_positions_count,
+                        "cooldowns": risk_manager.active_cooldowns(),
                     },
                     "llm_review": llm_state,
                     "updated_at": datetime.now(timezone.utc).isoformat(),

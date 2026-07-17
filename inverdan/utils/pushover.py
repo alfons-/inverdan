@@ -88,6 +88,7 @@ class PushoverNotifier:
         "Orden abierta",
         "Señal HOLD",
         "Confianza baja",
+        "Cooldown",      # se repetiría en cada señal del símbolo bloqueado
         "Precio $",
         "Tamaño de posición = 0",
     )

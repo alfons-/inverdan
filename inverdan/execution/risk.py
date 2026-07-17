@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from ..config.settings import Settings
@@ -43,6 +44,12 @@ class RiskManager:
         self._total_exposure: float = 0.0
         self._circuit_open: bool = False
         self._last_sync_signature: Optional[tuple] = None  # evita logs repetidos en cada sync
+        # Cooldown por símbolo: racha de cierres perdedores y bloqueo temporal.
+        # {symbol: (racha, fecha_última_pérdida)} y {symbol: bloqueado_hasta}.
+        # Corta el patrón whipsaw de reentrar una y otra vez en el mismo valor
+        # (NVDA jul-2026: 3 cortos seguidos parados en un rally = -453).
+        self._symbol_loss_streak: Dict[str, tuple] = {}
+        self._symbol_cooldown_until: Dict[str, datetime] = {}
 
     def approve(self, signal: Signal, portfolio_value: float) -> tuple[bool, str]:
         """
@@ -59,6 +66,19 @@ class RiskManager:
             # Solo BUY/SELL
             if signal.action == "HOLD":
                 return False, "Señal HOLD"
+
+            # Cooldown por símbolo (ambos lados): tras N pérdidas consecutivas en
+            # el mismo valor, no se opera durante unos días. El whipsaw pierde en
+            # las dos direcciones, así que el bloqueo no distingue largo/corto.
+            until = self._symbol_cooldown_until.get(signal.symbol)
+            if until is not None:
+                if datetime.now(timezone.utc) < until:
+                    streak = self._symbol_loss_streak.get(signal.symbol, (0, None))[0]
+                    return False, (
+                        f"Cooldown {signal.symbol}: {streak} pérdidas seguidas "
+                        f"(hasta {until:%d-%b %H:%M} UTC)"
+                    )
+                self._symbol_cooldown_until.pop(signal.symbol, None)  # expirado
 
             # Precio mínimo
             if signal.price < cfg.min_stock_price:
@@ -285,8 +305,12 @@ class RiskManager:
             if existing.qty <= 0:
                 if existing.realized < 0:
                     self._consecutive_losses += 1
+                    self._update_symbol_streak(symbol)
                 else:
                     self._consecutive_losses = 0
+                    # Un cierre ganador limpia la racha y cualquier cooldown del símbolo
+                    self._symbol_loss_streak.pop(symbol, None)
+                    self._symbol_cooldown_until.pop(symbol, None)
                 self._open_positions.pop(symbol, None)
 
             logger.info(
@@ -295,6 +319,36 @@ class RiskManager:
                 f"Pérdidas consecutivas: {self._consecutive_losses}"
             )
             return round(pnl, 4)
+
+    def _update_symbol_streak(self, symbol: str) -> None:
+        """Suma una pérdida a la racha del símbolo y activa el cooldown si toca.
+        Llamar con el lock cogido. Dos pérdidas cuentan como consecutivas si la
+        anterior ocurrió dentro de la ventana (symbol_cooldown_days)."""
+        threshold = getattr(self._cfg, "symbol_cooldown_losses", 0)
+        if threshold <= 0:
+            return
+        window = timedelta(days=getattr(self._cfg, "symbol_cooldown_days", 5.0))
+        now = datetime.now(timezone.utc)
+        streak, last = self._symbol_loss_streak.get(symbol, (0, None))
+        streak = streak + 1 if (last is not None and now - last <= window) else 1
+        self._symbol_loss_streak[symbol] = (streak, now)
+        if streak >= threshold:
+            until = now + window
+            self._symbol_cooldown_until[symbol] = until
+            logger.warning(
+                f"Cooldown activado en {symbol}: {streak} pérdidas consecutivas → "
+                f"sin operar hasta {until:%Y-%m-%d %H:%M} UTC"
+            )
+
+    def active_cooldowns(self) -> Dict[str, str]:
+        """{símbolo: hasta-cuándo (ISO)} de los cooldowns vigentes (para el dashboard)."""
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            expired = [s for s, u in self._symbol_cooldown_until.items() if u <= now]
+            for s in expired:
+                self._symbol_cooldown_until.pop(s, None)
+            return {s: u.isoformat(timespec="minutes")
+                    for s, u in self._symbol_cooldown_until.items()}
 
     def reset_daily(self) -> None:
         """Llamar al inicio de cada jornada."""

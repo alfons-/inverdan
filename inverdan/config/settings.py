@@ -97,6 +97,12 @@ class RiskSettings(BaseModel):
     # (ADX bajo + volumen alto, lo que predice ganadoras), no solo el nº de reglas, así
     # que este filtro veta los trades flojos. Antes estaba fijo en 0,5 en el código.
     min_confidence: float = Field(0.5, ge=0, le=1)
+    # Cooldown por símbolo: tras N pérdidas consecutivas en el MISMO valor (cerradas
+    # dentro de la ventana de D días), se bloquea operarlo (ambos lados) D días.
+    # Corta el whipsaw de reentrar una y otra vez (NVDA jul-2026: 3 cortos seguidos
+    # parados en un rally = -453). 0 = desactivado.
+    symbol_cooldown_losses: int = Field(2, ge=0, le=10)
+    symbol_cooldown_days: float = Field(5.0, gt=0, le=30)
 
 
 class PushoverSettings(BaseModel):

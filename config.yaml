@@ -44,6 +44,8 @@ risk:
   trend_buffer_pct: 0.01       # banda neutra ±1% del SMA: no operar tendencia plana (anti-whipsaw)
   max_adx: 40                  # no entrar con ADX>40: tendencia demasiado fuerte (cazar cuchillos = 100% perdía)
   min_confidence: 0.55         # subido de 0.5 (29-jun): filtra entradas marginales (vol muy bajo / ADX alto) que rozaban el umbral
+  symbol_cooldown_losses: 2    # pérdidas seguidas en un símbolo que activan su cooldown (0=off)
+  symbol_cooldown_days: 5      # días sin operar ese símbolo (y ventana para contar la racha)
 symbols:
 - AAPL
 - NVDA
