@@ -52,7 +52,13 @@ class PushoverNotifier:
         "stop_loss": "stop-loss",
         "take_profit": "take-profit",
         "trailing_stop": "trailing stop",
+        "earnings_guard": "cierre preventivo por earnings",
     }
+
+    def send(self, title: str, message: str, priority: int = 0) -> None:
+        """Envío directo (p. ej. avisos del guardia de earnings), con el mismo
+        branding y device targeting que el resto."""
+        self._send(title=title, message=message, priority=priority)
 
     def _on_order_filled(self, event: OrderFilledEvent) -> None:
         # Distingue abrir/cerrar y largo/corto a partir de los campos del evento

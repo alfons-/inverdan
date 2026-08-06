@@ -79,3 +79,7 @@ llm_review:
   max_headlines: 10
   use_web_search: true        # Claude busca earnings/macro (FOMC/CPI) él mismo
   web_search_max_uses: 2
+earnings_guard:
+  enabled: true               # vigila posiciones ABIERTAS con earnings inminentes
+  days_ahead: 2               # ventana en días de mercado
+  action: close               # close = cerrar la posición | notify = solo avisar por Pushover

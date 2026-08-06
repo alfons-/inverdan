@@ -1,9 +1,12 @@
 """Gestión de riesgo: circuit breakers, sizing de posición, stops."""
 from __future__ import annotations
 
+import json
+import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Dict, Optional
 
 from ..config.settings import Settings
@@ -50,6 +53,15 @@ class RiskManager:
         # (NVDA jul-2026: 3 cortos seguidos parados en un rally = -453).
         self._symbol_loss_streak: Dict[str, tuple] = {}
         self._symbol_cooldown_until: Dict[str, datetime] = {}
+        # Persistencia de racha/cooldowns: un reinicio del bot (deploy, crash,
+        # KeepAlive) borraba el estado en memoria y desarmaba al guardia justo
+        # cuando importaba (1-ago-2026: reinicio borró los cooldowns de MSFT/AMZN/
+        # NVDA y entraron operaciones que debían estar bloqueadas).
+        rp = getattr(settings, "root_path", None)
+        self._risk_state_file: Optional[Path] = (
+            rp / "risk_state.json" if isinstance(rp, Path) else None
+        )
+        self._load_risk_state()
 
     def approve(self, signal: Signal, portfolio_value: float) -> tuple[bool, str]:
         """
@@ -309,8 +321,10 @@ class RiskManager:
                 else:
                     self._consecutive_losses = 0
                     # Un cierre ganador limpia la racha y cualquier cooldown del símbolo
-                    self._symbol_loss_streak.pop(symbol, None)
-                    self._symbol_cooldown_until.pop(symbol, None)
+                    if symbol in self._symbol_loss_streak or symbol in self._symbol_cooldown_until:
+                        self._symbol_loss_streak.pop(symbol, None)
+                        self._symbol_cooldown_until.pop(symbol, None)
+                        self._save_risk_state()
                 self._open_positions.pop(symbol, None)
 
             logger.info(
@@ -319,6 +333,43 @@ class RiskManager:
                 f"Pérdidas consecutivas: {self._consecutive_losses}"
             )
             return round(pnl, 4)
+
+    def _load_risk_state(self) -> None:
+        """Restaura racha/cooldowns desde disco (descarta los ya expirados)."""
+        try:
+            p = self._risk_state_file
+            if p is None or not p.exists():
+                return
+            data = json.loads(p.read_text())
+            now = datetime.now(timezone.utc)
+            for sym, until in data.get("cooldowns", {}).items():
+                u = datetime.fromisoformat(until)
+                if u > now:
+                    self._symbol_cooldown_until[sym] = u
+            for sym, (n, last) in data.get("streaks", {}).items():
+                self._symbol_loss_streak[sym] = (int(n), datetime.fromisoformat(last))
+            if self._symbol_cooldown_until:
+                logger.info(
+                    f"Cooldowns restaurados de disco: {sorted(self._symbol_cooldown_until)}"
+                )
+        except Exception as e:
+            logger.warning(f"No se pudo restaurar risk_state.json: {e}")
+
+    def _save_risk_state(self) -> None:
+        """Vuelca racha/cooldowns a disco (atómico). Llamar con el lock cogido."""
+        try:
+            p = self._risk_state_file
+            if p is None:
+                return
+            data = {
+                "cooldowns": {s: u.isoformat() for s, u in self._symbol_cooldown_until.items()},
+                "streaks": {s: [n, t.isoformat()] for s, (n, t) in self._symbol_loss_streak.items()},
+            }
+            tmp = p.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data))
+            os.replace(tmp, p)
+        except Exception as e:
+            logger.warning(f"No se pudo guardar risk_state.json: {e}")
 
     def _update_symbol_streak(self, symbol: str) -> None:
         """Suma una pérdida a la racha del símbolo y activa el cooldown si toca.
@@ -339,6 +390,7 @@ class RiskManager:
                 f"Cooldown activado en {symbol}: {streak} pérdidas consecutivas → "
                 f"sin operar hasta {until:%Y-%m-%d %H:%M} UTC"
             )
+        self._save_risk_state()
 
     def active_cooldowns(self) -> Dict[str, str]:
         """{símbolo: hasta-cuándo (ISO)} de los cooldowns vigentes (para el dashboard)."""

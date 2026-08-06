@@ -226,3 +226,24 @@ class TestRiskManager:
         self._lose_once("SPY"); self._lose_once("SPY"); self._lose_once("SPY")
         ok, _ = self.rm.approve(make_signal(symbol="SPY"), 100_000)
         assert ok is True
+
+    def test_cooldown_survives_restart(self, tmp_path):
+        # La racha/cooldown se persisten a disco: un "reinicio" (instancia nueva)
+        # los restaura en vez de desarmar al guardia (caso 1-ago-2026).
+        from inverdan.execution.risk import RiskManager
+        cfg = make_settings()
+        cfg.root_path = tmp_path
+        rm1 = RiskManager(cfg)
+        for _ in range(2):
+            rm1.record_fill("NVDA", "sell", 100.0, 5)
+            rm1.record_fill("NVDA", "buy", 103.0, 5)
+        assert (tmp_path / "risk_state.json").exists()
+        rm2 = RiskManager(cfg)   # "reinicio"
+        ok, reason = rm2.approve(make_signal(symbol="NVDA"), 100_000)
+        assert ok is False and "Cooldown" in reason
+        # Y un cierre ganador tras el reinicio lo limpia (también en disco)
+        rm2.record_fill("NVDA", "buy", 100.0, 5)
+        rm2.record_fill("NVDA", "sell", 105.0, 5)
+        rm3 = RiskManager(cfg)
+        ok, _ = rm3.approve(make_signal(symbol="NVDA"), 100_000)
+        assert ok is True

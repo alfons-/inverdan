@@ -103,3 +103,40 @@ class TestLLMReviewer:
                         anthropic_client=_anthropic((True, 0.9, "ok")))
         names = [t.get("type") or t.get("name") for t in r._tools()]
         assert not any("web_search" in str(n) for n in names)
+
+
+def _earnings_client(has_soon=None, raise_err=False, no_verdict=False):
+    c = MagicMock()
+    if raise_err:
+        c.messages.create.side_effect = RuntimeError("api down")
+    elif no_verdict:
+        c.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="?")], stop_reason="end_turn")
+    else:
+        block = SimpleNamespace(type="tool_use", name="submit_earnings_check",
+                                input={"has_earnings_soon": has_soon, "detail": "MSFT reporta el 29-jul"})
+        c.messages.create.return_value = SimpleNamespace(content=[block], stop_reason="tool_use")
+    return c
+
+
+class TestCheckEarnings:
+    def test_detects_earnings(self):
+        r = LLMReviewer(_settings(), news_client=_news(), anthropic_client=_earnings_client(True))
+        soon, detail = r.check_earnings("MSFT", 2)
+        assert soon is True and "29-jul" in detail
+
+    def test_no_earnings(self):
+        r = LLMReviewer(_settings(), news_client=_news(), anthropic_client=_earnings_client(False))
+        soon, _ = r.check_earnings("GLD", 2)
+        assert soon is False
+
+    def test_api_error_returns_none(self):
+        # None = "no se pudo determinar" → el guardia NO actúa sobre incertidumbre
+        r = LLMReviewer(_settings(), news_client=_news(), anthropic_client=_earnings_client(raise_err=True))
+        soon, _ = r.check_earnings("MSFT", 2)
+        assert soon is None
+
+    def test_no_verdict_returns_none(self):
+        r = LLMReviewer(_settings(), news_client=_news(), anthropic_client=_earnings_client(no_verdict=True))
+        soon, _ = r.check_earnings("MSFT", 2)
+        assert soon is None

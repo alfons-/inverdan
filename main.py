@@ -286,8 +286,9 @@ def main():
             ))
 
     # ── Pushover ─────────────────────────────────────────────────────────────
+    notifier = None
     if settings.pushover.enabled:
-        PushoverNotifier(
+        notifier = PushoverNotifier(
             api_token=settings.pushover.api_token,
             user_key=settings.pushover.user_key,
             event_bus=event_bus,
@@ -488,6 +489,80 @@ def main():
 
     protect_thread = threading.Thread(target=protect_positions_loop, daemon=True, name="pos-protector")
     protect_thread.start()
+
+    # ── Guardia de earnings sobre posiciones ABIERTAS ────────────────────────
+    def earnings_guard_loop():
+        """
+        Una vez al día por símbolo con posición abierta, pregunta a la capa LLM
+        (con web_search) si tiene earnings dentro de la ventana. Si los tiene,
+        cierra la posición (action=close) o avisa por Pushover (action=notify).
+
+        Motivo: el gap de earnings atraviesa cualquier trailing stop — la capa LLM
+        veta ENTRADAS con earnings a <3 días, pero una posición abierta semanas
+        antes navegaba hasta el gap sin ningún control (jul-2026: -1.5k).
+        """
+        gcfg = settings.earnings_guard
+        checked: dict = {}   # symbol -> "YYYY-MM-DD" ya comprobado ese día
+        time.sleep(90)       # dejar arrancar todo (sync de posiciones incluido)
+        while True:
+            try:
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                snap = portfolio_tracker.get_snapshot()
+                for pos in snap.positions:
+                    if checked.get(pos.symbol) == today:
+                        continue
+                    soon, info = llm_reviewer.check_earnings(pos.symbol, gcfg.days_ahead)
+                    if soon is None:
+                        continue     # no se pudo determinar → reintentar en la próxima vuelta
+                    checked[pos.symbol] = today
+                    if not soon:
+                        continue
+                    logger.warning(f"Earnings guard {pos.symbol}: {info}")
+                    if gcfg.action == "close":
+                        broker.cancel_orders_for_symbol(pos.symbol)
+                        time.sleep(1)   # dejar a Alpaca soltar las acciones
+                        if not broker.close_position(pos.symbol):
+                            continue
+                        side_order = "sell" if pos.side == "long" else "buy"
+                        price = pos.current_price or pos.entry_price
+                        pnl = risk_manager.record_fill(pos.symbol, side_order, price, pos.qty)
+                        trade_logger.log_trade({
+                            "symbol": pos.symbol, "action": side_order.upper(),
+                            "price": price, "qty": pos.qty,
+                            "close_reason": "earnings_guard", "pnl": pnl,
+                            "source": "earnings_guard",
+                        })
+                        if pnl is not None:
+                            portfolio_tracker.remove_position(pos.symbol, pnl)
+                        event_bus.post(OrderFilledEvent(
+                            symbol=pos.symbol, side=side_order, shares=pos.qty,
+                            fill_price=price, order_id="earnings-guard",
+                            stop_price=0.0, take_profit_price=0.0,
+                            is_close=True, pnl=pnl,
+                            position_side=pos.side, close_reason="earnings_guard",
+                        ))
+                    elif notifier is not None:
+                        notifier.send(
+                            title=f"📅 Earnings inminentes — {pos.symbol}",
+                            message=(
+                                f"Posición {pos.side} de {pos.qty} acciones abierta y "
+                                f"earnings dentro de {gcfg.days_ahead} días.\n{info}\n"
+                                f"(action=notify: no cierro nada, decide tú)"
+                            ),
+                            priority=1,
+                        )
+            except Exception as e:
+                logger.warning(f"earnings_guard_loop error: {e}")
+            time.sleep(3600)   # el dato de earnings no cambia intradía
+
+    if settings.earnings_guard.enabled and llm_reviewer is not None:
+        threading.Thread(target=earnings_guard_loop, daemon=True, name="earnings-guard").start()
+        logger.info(
+            f"Earnings guard activado (acción: {settings.earnings_guard.action}, "
+            f"ventana: {settings.earnings_guard.days_ahead} días)."
+        )
+    elif settings.earnings_guard.enabled:
+        logger.warning("earnings_guard habilitado pero la capa LLM está inactiva → guard desactivado.")
 
     # ── Reseteo diario de contadores al abrir el mercado ─────────────────────
     def daily_reset_loop():

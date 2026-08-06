@@ -129,6 +129,16 @@ class LLMReviewSettings(BaseModel):
     web_search_max_uses: int = Field(2, gt=0, le=10)
 
 
+class EarningsGuardSettings(BaseModel):
+    """Vigila las posiciones ABIERTAS: si su símbolo publica earnings dentro de la
+    ventana, cierra la posición (o avisa, según action). El gap de earnings atraviesa
+    cualquier trailing stop (jul-2026: cortos de MSFT/AMZN aguantados hasta sus
+    earnings = -1.5k). Requiere la capa LLM activa (usa su web_search)."""
+    enabled: bool = True
+    days_ahead: int = Field(2, gt=0, le=5)
+    action: str = Field("close", pattern="^(close|notify)$")
+
+
 class DashboardSettings(BaseModel):
     refresh_rate: float = 1.0
     max_log_lines: int = 50
@@ -161,6 +171,7 @@ class Settings(BaseModel):
     training: TrainingSettings = TrainingSettings()
     pushover: PushoverSettings = PushoverSettings()
     llm_review: LLMReviewSettings = LLMReviewSettings()
+    earnings_guard: EarningsGuardSettings = EarningsGuardSettings()
 
     @property
     def root_path(self) -> Path:
